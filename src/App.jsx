@@ -27,7 +27,9 @@ import {
   HelpCircle,
   ArrowUpRight,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  ChevronLeft,
+  CheckCircle2
 } from 'lucide-react';
 
 // Format money in Sri Lankan Rupees (LKR / Rs.)
@@ -382,682 +384,134 @@ export default function App() {
     showToast('Sample LKR data loaded to Firebase');
   };
 
-  return (
-    <div className="min-h-screen bg-black text-white font-mono min-h-screen antialiased relative selection:bg-white selection:text-black pb-24 md:pb-12">
-      
-      {/* SVG Grain Overlay Texture */}
-      <svg className="pointer-events-none fixed inset-0 z-50 h-full w-full opacity-[0.04] mix-blend-overlay">
-        <filter id="noiseFilter">
-          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#noiseFilter)" />
-      </svg>
+  // New Drill-Down UI
+  const isHome = activeTab !== 'companyDetails';
+  const selectedComp = companies.find(c => c.id === selectedCompanyId);
+  const compShifts = filteredShifts.filter(s => s.companyId === selectedCompanyId);
+  const compEarn = compShifts.reduce((sum, s) => sum + Number(s.earnings || 0), 0);
 
-      {/* Toast Notification */}
+  return (
+    <div className="min-h-screen bg-[#050505] text-white font-mono select-none relative pb-12">
+      
+      {/* Toast */}
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-50 bg-white text-black text-xs font-bold px-4 py-2 border border-black shadow-2xl flex items-center gap-2 tracking-wide uppercase">
-          <Check className="w-3.5 h-3.5" />
-          {toastMessage}
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black box-glow-cyan text-white px-4 py-2 text-xs font-bold uppercase tracking-widest animate-fade-in flex items-center gap-2">
+          <CheckCircle2 className="w-3.5 h-3.5 glow-cyan" /> {toastMessage}
         </div>
       )}
 
-      {/* Header */}
-      <header className="border-b border-white/10 bg-black/90 backdrop-blur-sm sticky top-0 z-30 px-4 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 border border-white flex items-center justify-center font-bold text-sm bg-white text-black">
-              LKR
-            </div>
-            <div>
-              <h1 className="text-sm font-bold tracking-widest uppercase text-white">
-                PAYTRACK.LK
-              </h1>
-              <p className="text-[10px] text-neutral-400 tracking-wider uppercase flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-white inline-block"></span> Offline Operating Mode
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => {
-              if (companies.length === 0) {
-                showToast('Please add a company first');
-                setCompanyModalOpen(true);
-                return;
-              }
-              setEditingShift(null);
-              setShiftModalOpen(true);
-            }}
-            className="border border-white bg-white text-black hover:bg-neutral-200 active:translate-y-0.5 px-4 py-2 text-xs font-bold tracking-widest uppercase transition flex items-center gap-2"
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            Log Shift
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-
-        {/* Global Controls & Filter Bar */}
-        <section className="border border-white/10 glass-panel animate-fade-in p-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400">
-              <Calendar className="w-3.5 h-3.5 text-white" />
-              Month:
-            </div>
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-black border border-white/10 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-white tracking-widest"
-            />
-            {selectedMonth !== 'all' && (
-              <button
-                onClick={() => setSelectedMonth('all')}
-                className="text-[10px] uppercase text-neutral-500 hover:text-white underline tracking-wider"
+      {isHome ? (
+        <div className="max-w-xl mx-auto p-4 sm:p-6 space-y-8 animate-fade-in">
+          {/* Top Header: Date Filter */}
+          <div className="flex justify-between items-center border-b border-white/20 pb-4">
+            <h1 className="font-extrabold text-lg tracking-[0.2em] uppercase glow-cyan">PayTrack</h1>
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-neutral-400" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-black border border-white/20 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-[var(--neon-cyan)] uppercase tracking-widest box-glow-cyan"
               >
-                All Time
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4 w-full sm:w-auto">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400">
-              <Filter className="w-3.5 h-3.5 text-white" />
-              Company:
-            </div>
-            <select
-              value={companyFilter}
-              onChange={(e) => setCompanyFilter(e.target.value)}
-              className="bg-black border border-white/10 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-white w-full sm:w-auto tracking-widest uppercase"
-            >
-              <option value="all">ALL COMPANIES</option>
-              {companies.map(c => (
-                <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
-        </section>
-
-
-
-        {}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-8">
-            {/* Stat Box Summary Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
-                <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Total Earnings (LKR)</p>
-                <h3 className="text-xl font-extrabold tracking-tight text-white">{formatLKR(stats.totalEarnings)}</h3>
-                <p className="text-[10px] text-neutral-400">
-                  {stats.totalBonuses > 0 ? `Includes ${formatLKR(stats.totalBonuses)} bonuses` : 'Base salary totals'}
-                </p>
-              </div>
-
-              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
-                <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Hours Worked</p>
-                <h3 className="text-xl font-extrabold tracking-tight text-white">{stats.totalHours} <span className="text-xs font-normal text-neutral-500">HRS</span></h3>
-                <p className="text-[10px] text-neutral-400">{stats.shiftCount} shift entries logged</p>
-              </div>
-
-              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
-                <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Avg Hourly Rate</p>
-                <h3 className="text-xl font-extrabold tracking-tight text-white">{formatLKR(stats.avgHourlyRate)}<span className="text-xs font-normal text-neutral-500">/hr</span></h3>
-                <p className="text-[10px] text-neutral-400">Effective average rate</p>
-              </div>
-
-              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
-                <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Active Employers</p>
-                <h3 className="text-xl font-extrabold tracking-tight text-white">{companies.length}</h3>
-                <p className="text-[10px] text-neutral-400">Configured in system</p>
-              </div>
-            </div>
-
-            {/* Earnings Breakdown Section */}
-            <div className="border border-white/10 glass-panel animate-fade-in p-6 space-y-6">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-                  <Briefcase className="w-4 h-4" /> Earnings Breakdown By Company
-                </h2>
-              </div>
-
-              {Object.keys(stats.companyBreakdown).length === 0 ? (
-                <div className="py-12 text-center text-neutral-500 space-y-3">
-                  <p className="text-xs uppercase tracking-wider">No shifts recorded for this period</p>
-                  <button
-                    onClick={() => {
-                      if (companies.length === 0) setCompanyModalOpen(true);
-                      else setShiftModalOpen(true);
-                    }}
-                    className="border border-neutral-700 hover:border-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-white transition"
-                  >
-                    + Add First Entry
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {Object.entries(stats.companyBreakdown).map(([compId, data]) => {
-                    const company = companies.find(c => c.id === compId) || { name: 'Unknown Company' };
-                    const percentage = stats.totalEarnings > 0 ? ((data.earnings / stats.totalEarnings) * 100).toFixed(1) : 0;
-
-                    return (
-                      <div key={compId} className="border border-white/10 bg-black p-4 space-y-3">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-bold text-white tracking-widest uppercase">{company.name}</span>
-                          <div className="text-right">
-                            <span className="font-bold text-white">{formatLKR(data.earnings)}</span>
-                            <span className="text-neutral-500 ml-2">({percentage}%)</span>
-                          </div>
-                        </div>
-
-                        {/* Monochrome Progress Bar */}
-                        <div className="w-full bg-neutral-900 h-1.5 overflow-hidden">
-                          <div className="bg-white h-full" style={{ width: `${percentage}%` }}></div>
-                        </div>
-
-                        <div className="flex justify-between text-[10px] text-neutral-400 tracking-wider uppercase">
-                          <span>{data.hours} HRS WORKED ({data.count} SHIFTS)</span>
-                          <span>AVG: {formatLKR(data.hours > 0 ? data.earnings / data.hours : 0)}/HR</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Recent Shifts Table */}
-            <div className="border border-white/10 glass-panel animate-fade-in p-6 space-y-4">
-              <div className="flex justify-between items-center border-b border-white/10 pb-3">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> Recent Shift Logs
-                </h2>
-                <button
-                  onClick={() => setActiveTab('shifts')}
-                  className="text-[10px] text-neutral-400 hover:text-white uppercase tracking-wider flex items-center gap-1 underline"
-                >
-                  View All <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-
-              {filteredShifts.slice(0, 5).length === 0 ? (
-                <div className="py-8 text-center text-neutral-500 text-xs uppercase tracking-wider">
-                  No shifts found
-                </div>
-              ) : (
-                <div className="divide-y divide-neutral-800">
-                  {filteredShifts.slice(0, 5).map(shift => {
-                    const company = companies.find(c => c.id === shift.companyId);
-                    return (
-                      <div key={shift.id} className="py-3 flex justify-between items-center text-xs">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-white tracking-widest">{shift.date}</span>
-                            <span className="text-[10px] border border-white/10 px-1.5 py-0.5 text-neutral-400 uppercase">
-                              {getDayName(shift.date)}
-                            </span>
-                            <span className="text-[10px] text-neutral-300 uppercase font-bold">
-                              {company?.name || 'EMPLOYER'}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-neutral-500 tracking-wider">
-                            {shift.startTime} - {shift.endTime} ({shift.hoursWorked} HRS @ {formatLKR(shift.hourlyRate)}/HR)
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-white">{formatLKR(shift.earnings)}</p>
-                          {shift.bonus > 0 && <span className="text-[9px] text-neutral-400 block">+ {formatLKR(shift.bonus)} BONUS</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                <option value="all">ALL TIME</option>
+                <option value={new Date().toISOString().slice(0, 7)}>{new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}</option>
+                <option value={new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().slice(0, 7)}>
+                  {new Date(new Date().setMonth(new Date().getMonth() - 1)).toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </option>
+              </select>
             </div>
           </div>
-        )}
 
-        {}
-        {activeTab === 'shifts' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Work Shift Entries</h2>
-                <p className="text-[10px] text-neutral-500 tracking-wider uppercase">Log your daily hours and calculated rates</p>
-              </div>
-              <button
-                onClick={() => {
-                  if (companies.length === 0) {
-                    showToast('Please add a company first');
-                    setCompanyModalOpen(true);
-                    return;
-                  }
-                  setEditingShift(null);
-                  setShiftModalOpen(true);
-                }}
-                className="border border-white bg-white text-black hover:bg-neutral-200 px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Log Shift
-              </button>
-            </div>
-
-            {filteredShifts.length === 0 ? (
-              <div className="border border-white/10 glass-panel animate-fade-in p-12 text-center space-y-4">
-                <p className="text-xs text-neutral-500 uppercase tracking-widest">No work shifts recorded for this view</p>
-                <button
-                  onClick={() => {
-                    if (companies.length === 0) setCompanyModalOpen(true);
-                    else setShiftModalOpen(true);
-                  }}
-                  className="border border-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-white hover:bg-white hover:text-black transition"
-                >
-                  Log Your First Shift
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredShifts.map(shift => {
-                  const company = companies.find(c => c.id === shift.companyId);
-
-                  return (
-                    <div
-                      key={shift.id}
-                      className="border border-white/10 glass-panel animate-fade-in p-4 transition flex flex-col sm:flex-row justify-between sm:items-center gap-4"
-                    >
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="font-bold text-white text-xs tracking-widest">{shift.date}</span>
-                          <span className="text-[10px] border border-white/10 px-2 py-0.5 text-neutral-400 uppercase">
-                            {getDayName(shift.date)}
-                          </span>
-                          <span className="text-[10px] bg-white text-black font-bold px-2 py-0.5 uppercase tracking-wider">
-                            {company?.name || 'DELETED COMPANY'}
-                          </span>
-                        </div>
-
-                        <div className="text-[11px] text-neutral-400 flex flex-wrap items-center gap-x-4 gap-y-1 tracking-wider uppercase">
-                          <span>TIME: {shift.startTime} - {shift.endTime}</span>
-                          <span>HOURS: {shift.hoursWorked} HRS (BREAK: {shift.breakMinutes || 0}M)</span>
-                          <span>RATE: {formatLKR(shift.hourlyRate)}/HR</span>
-                        </div>
-
-                        {shift.notes && (
-                          <p className="text-[11px] text-neutral-300 italic border-l border-neutral-700 pl-2">"{shift.notes}"</p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-white/10">
-                        <div className="text-left sm:text-right">
-                          <div className="text-sm font-extrabold text-white tracking-widest">
-                            {formatLKR(shift.earnings)}
-                          </div>
-                          {shift.bonus > 0 && (
-                            <div className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">
-                              + {formatLKR(shift.bonus)} BONUS
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingShift(shift);
-                              setShiftModalOpen(true);
-                            }}
-                            className="p-1.5 border border-white/10 hover:border-white text-neutral-400 hover:text-white transition"
-                            title="Edit Shift"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm({ type: 'shift', id: shift.id, title: `Shift on ${shift.date}` })}
-                            className="p-1.5 border border-white/10 hover:border-red-500 text-neutral-400 hover:text-red-400 transition"
-                            title="Delete Shift"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          {/* Top Header: Total Money Earned */}
+          <div className="text-center py-8">
+            <p className="text-xs text-neutral-400 uppercase tracking-widest mb-2">Total Earnings</p>
+            <h2 className="text-5xl font-extrabold tracking-tighter glow-purple">
+              {formatLKR(stats.totalEarnings)}
+            </h2>
           </div>
-        )}
 
-        {}
-        {activeTab === 'companies' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white">Employers & Rate Rules</h2>
-                <p className="text-[10px] text-neutral-500 tracking-wider uppercase">Set up standard hourly rates, weekend rules, and promotion history</p>
-              </div>
-              <button
-                onClick={() => {
-                  setEditingCompany(null);
-                  setCompanyModalOpen(true);
-                }}
-                className="border border-white bg-white text-black hover:bg-neutral-200 px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Company
-              </button>
+          {/* Company List */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center border-b border-white/10 pb-2">
+              <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Your Workplaces</h3>
+              <button onClick={() => { setEditingCompany(null); setCompanyModalOpen(true); }} className="text-[10px] uppercase font-bold text-[var(--neon-cyan)] hover:glow-cyan transition">+ Add Company</button>
             </div>
 
             {companies.length === 0 ? (
-              <div className="border border-white/10 glass-panel animate-fade-in p-12 text-center space-y-4">
-                <p className="text-xs text-neutral-500 uppercase tracking-widest">No companies configured yet</p>
-                <button
-                  onClick={() => setCompanyModalOpen(true)}
-                  className="border border-white px-4 py-2 text-xs font-bold uppercase tracking-widest text-white hover:bg-white hover:text-black transition"
-                >
-                  + Add Your First Company
-                </button>
-              </div>
+              <p className="text-xs text-neutral-600 italic text-center py-8">No companies created yet.</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {companies.map(company => {
-                  return (
-                    <div
-                      key={company.id}
-                      className="border border-white/10 glass-panel animate-fade-in p-6 space-y-6 flex flex-col justify-between"
-                    >
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-start border-b border-white/10 pb-3">
-                          <div className="space-y-1">
-                            <button onClick={() => { setSelectedCompanyId(company.id); setActiveTab('companyDetails'); }} className="font-bold text-white text-sm tracking-widest uppercase hover:underline text-left">{company.name} <ArrowUpRight className="inline w-3 h-3 ml-1" /></button>
-                            <p className="text-[10px] text-neutral-400">{company.notes || 'No notes provided'}</p>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingCompany(company);
-                                setCompanyModalOpen(true);
-                              }}
-                              className="p-1.5 border border-white/10 hover:border-white text-neutral-400 hover:text-white"
-                              title="Edit Company"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteConfirm({ type: 'company', id: company.id, title: company.name })}
-                              className="p-1.5 border border-white/10 hover:border-red-500 text-neutral-400 hover:text-red-400"
-                              title="Delete Company"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Standard Hourly Rate */}
-                        <div className="bg-black border border-white/10 p-3 space-y-2 text-xs">
-                          <div className="flex justify-between items-center">
-                            <span className="text-neutral-400 uppercase text-[10px] tracking-wider">Default Hourly Rate:</span>
-                            <span className="text-white font-extrabold">{formatLKR(company.defaultRate)}/hr</span>
-                          </div>
-
-                          {/* Day specific overrides */}
-                          {company.dayRates && Object.keys(company.dayRates).length > 0 && (
-                            <div className="border-t border-white/10 pt-2 space-y-1">
-                              <span className="text-[9px] text-neutral-500 uppercase font-bold tracking-wider block">Custom Day Overrides:</span>
-                              <div className="flex flex-wrap gap-2 text-[10px]">
-                                {company.dayRates[0] !== undefined && (
-                                  <span className="border border-neutral-700 px-2 py-0.5 text-neutral-300">SUN: {formatLKR(company.dayRates[0])}/HR</span>
-                                )}
-                                {company.dayRates[6] !== undefined && (
-                                  <span className="border border-neutral-700 px-2 py-0.5 text-neutral-300">SAT: {formatLKR(company.dayRates[6])}/HR</span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Promotion & Rate Revisions */}
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-300 flex items-center gap-1">
-                              <Sparkles className="w-3 h-3 text-white" /> Salary Changes & Promotions
-                            </span>
-                            <button
-                              onClick={() => setRateModalCompany(company)}
-                              className="text-[10px] uppercase underline text-white hover:text-neutral-300 flex items-center gap-0.5 tracking-wider"
-                            >
-                              + Add Promotion
-                            </button>
-                          </div>
-
-                          {(!company.rateHistory || company.rateHistory.length === 0) ? (
-                            <p className="text-[10px] text-neutral-600 italic">No salary changes added yet.</p>
-                          ) : (
-                            <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                              {company.rateHistory.map(history => (
-                                <div key={history.id} className="text-[11px] bg-black border border-white/10 p-2.5 flex justify-between items-center">
-                                  <div className="space-y-0.5">
-                                    <div className="font-bold text-white">
-                                      {formatLKR(history.rate)}/HR <span className="text-neutral-500 font-normal text-[10px]">FROM {history.startDate}</span>
-                                    </div>
-                                    {history.note && <p className="text-[9px] text-neutral-400 uppercase tracking-wider">{history.note}</p>}
-                                  </div>
-                                  <button
-                                    onClick={() => handleDeleteRateRevision(company.id, history.id)}
-                                    className="text-neutral-600 hover:text-red-400 p-1"
-                                  >
-                                    <X className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
+              companies.map(c => {
+                const ce = filteredShifts.filter(s => s.companyId === c.id).reduce((sum, s) => sum + Number(s.earnings || 0), 0);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => { setSelectedCompanyId(c.id); setActiveTab('companyDetails'); }}
+                    className="w-full bg-black border border-white/10 p-5 flex justify-between items-center transition hover:box-glow-purple group text-left"
+                  >
+                    <span className="font-bold uppercase tracking-widest text-sm group-hover:glow-purple transition">{c.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="font-extrabold text-sm">{formatLKR(ce)}</span>
+                      <ArrowUpRight className="w-4 h-4 text-neutral-600 group-hover:glow-purple transition" />
                     </div>
-                  );
-                })}
-              </div>
+                  </button>
+                );
+              })
             )}
           </div>
-        )}
-
-        {}
-        
-        {activeTab === 'companyDetails' && selectedCompanyId && (() => {
-          const company = companies.find(c => c.id === selectedCompanyId);
-          if (!company) return <div>Company not found</div>;
-          const companyShifts = filteredShifts.filter(s => s.companyId === selectedCompanyId);
-          return (
-            <div className="space-y-6 animate-fade-in">
-              <button onClick={() => setActiveTab('companies')} className="text-xs uppercase text-neutral-400 hover:text-white flex items-center gap-1 mb-4">
-                ← Back to Companies
-              </button>
-              <div className="flex justify-between items-end border-b border-white/10 pb-4">
-                <div>
-                  <h2 className="text-xl font-extrabold tracking-widest text-white uppercase">{company.name}</h2>
-                  <p className="text-[10px] text-neutral-400 tracking-wider uppercase mt-1">Dedicated Company View</p>
-                </div>
-                <button
-                  onClick={() => {
-                    setEditingShift(null);
-                    setShiftModalOpen(true);
-                  }}
-                  className="border border-white bg-white text-black hover:bg-neutral-200 px-4 py-2 text-xs font-bold uppercase tracking-widest transition flex items-center gap-2"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Log Shift Here
-                </button>
-              </div>
-              
-              {companyShifts.length === 0 ? (
-                <div className="glass-panel p-12 text-center text-neutral-500 text-xs uppercase tracking-widest">
-                  No shifts recorded for {company.name}
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {companyShifts.map(shift => (
-                    <div key={shift.id} className="glass-panel p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                      <div className="space-y-1 text-xs">
-                        <span className="font-bold text-white tracking-widest">{shift.date}</span>
-                        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">{shift.startTime} - {shift.endTime} ({shift.hoursWorked} HRS)</p>
-                      </div>
-                      <div className="text-right text-sm font-extrabold text-white tracking-widest">
-                        {formatLKR(shift.earnings)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })()}
-
-        {activeTab === 'settings' && (
-          <div className="max-w-2xl mx-auto space-y-6">
-            <div className="border border-white/10 glass-panel animate-fade-in p-6 space-y-6">
-              <div className="border-b border-white/10 pb-3">
-                <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-                  <Settings className="w-4 h-4" /> Offline Data & Backup
-                </h2>
-                <p className="text-[10px] text-neutral-500 tracking-wider uppercase mt-1">
-                  All calculation entries are saved locally in your browser storage in Sri Lankan Rupees.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={handleExportData}
-                  className="flex items-center justify-center gap-2 border border-white bg-black hover:bg-white hover:text-black text-white p-3 font-bold text-xs uppercase tracking-widest transition"
-                >
-                  <Download className="w-4 h-4" /> Export Backup (JSON)
-                </button>
-
-                <label className="flex items-center justify-center gap-2 border border-neutral-700 bg-neutral-900 hover:border-white text-white p-3 font-bold text-xs uppercase tracking-widest transition cursor-pointer">
-                  <Upload className="w-4 h-4" /> Import Backup File
-                  <input type="file" accept=".json" onChange={handleImportData} className="hidden" />
-                </label>
-              </div>
-
-              <div className="border-t border-white/10 pt-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-white">Load Demo Sample Data</h4>
-                    <p className="text-[10px] text-neutral-500">Need sample LKR data to test the dashboard features?</p>
-                  </div>
-                  <button
-                    onClick={handleLoadSampleData}
-                    className="border border-neutral-700 hover:border-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-neutral-300 hover:text-white transition"
-                  >
-                    Load Sample
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-between border-t border-white/10 pt-4">
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-red-400">Clear All Storage</h4>
-                    <p className="text-[10px] text-neutral-500">Remove all logged companies and shift entries.</p>
-                  </div>
-                  <button
-                    onClick={() => setDeleteConfirm({ type: 'clearAll', id: null, title: 'ALL DATA (Shifts & Companies)' })}
-                    className="border border-red-900 bg-red-950/30 hover:bg-red-900 hover:text-white text-red-400 px-3 py-1.5 text-xs font-bold uppercase tracking-widest transition"
-                  >
-                    Clear All Data
-                  </button>
-                </div>
-              </div>
-            </div>
+        </div>
+      ) : (
+        /* Company Details View (Drill Down) */
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6 animate-slide-up">
+          {/* Back & Title */}
+          <div className="flex items-center gap-4 border-b border-white/20 pb-4">
+            <button onClick={() => setActiveTab('home')} className="btn-cyan p-2">
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-extrabold tracking-widest uppercase glow-cyan flex-1 truncate">{selectedComp?.name}</h2>
+            <button onClick={() => { setEditingCompany(selectedComp); setCompanyModalOpen(true); }} className="btn-purple px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest">
+              Settings
+            </button>
           </div>
-        )}
 
-      </main>
+          {/* Company Totals */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="border border-[var(--neon-purple)] bg-black p-6 text-center box-glow-purple flex flex-col justify-center">
+              <p className="text-[10px] text-[var(--neon-purple)] uppercase tracking-widest mb-1">Total Earnings</p>
+              <p className="text-2xl font-extrabold glow-purple">{formatLKR(compEarn)}</p>
+            </div>
+            <button onClick={() => { setEditingShift(null); setShiftModalOpen(true); }} className="btn-cyan font-extrabold text-sm uppercase tracking-widest flex flex-col items-center justify-center p-6">
+              <Plus className="w-6 h-6 mb-1" /> Log Shift
+            </button>
+          </div>
 
-      {/* Mobile Bottom Bar Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-white/10 px-4 py-3 flex justify-around items-center">
-        <button
-          onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${
-            activeTab === 'dashboard' ? 'text-white' : 'text-neutral-600'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          Dash
-        </button>
-        <button
-          onClick={() => setActiveTab('shifts')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${
-            activeTab === 'shifts' ? 'text-white' : 'text-neutral-600'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          Shifts
-        </button>
-        <button
-          onClick={() => setActiveTab('companies')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${
-            activeTab === 'companies' ? 'text-white' : 'text-neutral-600'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          Companies
-        </button>
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`flex flex-col items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${
-            activeTab === 'settings' ? 'text-white' : 'text-neutral-600'
-          }`}
-        >
-          <Settings className="w-4 h-4" />
-          Settings
-        </button>
-      </nav>
-
-      {}
-        {/* Navigation Tabs */}
-        <nav className="fixed bottom-0 left-0 right-0 z-40 flex justify-around bg-black/90 backdrop-blur-md border-t border-white/10 p-3 text-xs font-bold tracking-widest uppercase">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'dashboard'
-                ? 'border-white text-white'
-                : ' text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('shifts')}
-            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'shifts'
-                ? 'border-white text-white'
-                : ' text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            Shifts ({stats.shiftCount})
-          </button>
-          <button
-            onClick={() => setActiveTab('companies')}
-            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'companies'
-                ? 'border-white text-white'
-                : ' text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            Companies ({companies.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'settings'
-                ? 'border-white text-white'
-                : ' text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            Settings
-          </button>
-        </nav>
+          {/* Shifts List */}
+          <div className="pt-4 space-y-3">
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 border-b border-white/10 pb-2">Shift History</h3>
+            {compShifts.length === 0 ? (
+              <p className="text-xs text-neutral-600 italic text-center py-8">No shifts found for this date range.</p>
+            ) : (
+              compShifts.map(shift => (
+                <div key={shift.id} className="border border-white/10 bg-black p-4 flex justify-between items-center hover:border-white/40 transition">
+                  <div className="space-y-1">
+                    <span className="font-bold text-white tracking-widest">{shift.date}</span>
+                    <p className="text-[10px] text-neutral-400 uppercase tracking-wider">
+                      {shift.startTime} - {shift.endTime} <span className="glow-cyan">({shift.hoursWorked} HRS)</span>
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="text-right text-sm font-extrabold text-white tracking-widest glow-cyan">
+                      {formatLKR(shift.earnings)}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setEditingShift(shift); setShiftModalOpen(true); }} className="text-[9px] uppercase tracking-widest text-neutral-400 hover:glow-cyan border border-white/20 px-2 py-0.5 transition">Edit</button>
+                      <button onClick={() => setDeleteConfirm({ type: 'shift', id: shift.id })} className="text-[9px] uppercase tracking-widest text-neutral-400 hover:glow-purple border border-white/20 px-2 py-0.5 transition">Del</button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {shiftModalOpen && (
         <ShiftModal
