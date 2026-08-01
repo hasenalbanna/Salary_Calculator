@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { database } from './firebase';
 import { ref, onValue, set } from 'firebase/database';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { 
   Building2, 
   Calendar, 
@@ -70,7 +73,8 @@ export default function App() {
   const [shifts, setShifts] = useState([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'shifts', 'companies', 'settings'
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null); // 'dashboard', 'shifts', 'companies', 'settings'
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const today = new Date();
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
@@ -187,7 +191,7 @@ export default function App() {
     set(ref(database, path), data);
   };
   const handleSaveShift = (shiftData) => {
-    const hoursWorked = calculateHours(shiftData.startTime, shiftData.endTime, shiftData.breakMinutes);
+    const hoursWorked = shiftData.isFixedHours ? Number(shiftData.fixedHours || 0) : calculateHours(shiftData.startTime, shiftData.endTime, shiftData.breakMinutes);
     const company = companies.find(c => c.id === shiftData.companyId);
     
     const autoRate = getEffectiveRate(company, shiftData.date);
@@ -283,6 +287,34 @@ export default function App() {
     showToast('Rate revision removed');
   };
 
+
+  const handleGeneratePayslip = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(20);
+    doc.text("PAYTRACK LK - PAYSLIP", 14, 22);
+    
+    doc.setFontSize(11);
+    doc.text("Month: " + (selectedMonth === 'all' ? 'All Time' : selectedMonth), 14, 30);
+    doc.text("Total Earnings: " + formatLKR(stats.totalEarnings), 14, 36);
+    doc.text("Total Hours: " + stats.totalHours + " hrs", 14, 42);
+
+    const tableData = filteredShifts.map(s => [
+      s.date,
+      companies.find(c => c.id === s.companyId)?.name || 'Unknown',
+      s.startTime + " - " + s.endTime,
+      s.hoursWorked + " hrs",
+      formatLKR(s.earnings)
+    ]);
+
+    doc.autoTable({
+      startY: 50,
+      head: [['Date', 'Company', 'Time', 'Hours', 'Earnings']],
+      body: tableData,
+    });
+
+    doc.save(`payslip_${selectedMonth}.pdf`);
+  };
+
   // Data Export / Import
   const handleExportData = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ companies, shifts }, null, 2));
@@ -351,7 +383,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white font-mono antialiased relative selection:bg-white selection:text-black pb-24 md:pb-12">
+    <div className="min-h-screen bg-black text-white font-mono min-h-screen antialiased relative selection:bg-white selection:text-black pb-24 md:pb-12">
       
       {/* SVG Grain Overlay Texture */}
       <svg className="pointer-events-none fixed inset-0 z-50 h-full w-full opacity-[0.04] mix-blend-overlay">
@@ -370,7 +402,7 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header className="border-b border-neutral-800 bg-black/90 backdrop-blur-sm sticky top-0 z-30 px-4 py-4">
+      <header className="border-b border-white/10 bg-black/90 backdrop-blur-sm sticky top-0 z-30 px-4 py-4">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 border border-white flex items-center justify-center font-bold text-sm bg-white text-black">
@@ -408,7 +440,7 @@ export default function App() {
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-8">
 
         {/* Global Controls & Filter Bar */}
-        <section className="border border-neutral-800 bg-neutral-950 p-4 flex flex-wrap items-center justify-between gap-4">
+        <section className="border border-white/10 glass-panel animate-fade-in p-4 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto">
             <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400">
               <Calendar className="w-3.5 h-3.5 text-white" />
@@ -418,7 +450,7 @@ export default function App() {
               type="month"
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-black border border-neutral-800 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-white tracking-widest"
+              className="bg-black border border-white/10 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-white tracking-widest"
             />
             {selectedMonth !== 'all' && (
               <button
@@ -438,7 +470,7 @@ export default function App() {
             <select
               value={companyFilter}
               onChange={(e) => setCompanyFilter(e.target.value)}
-              className="bg-black border border-neutral-800 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-white w-full sm:w-auto tracking-widest uppercase"
+              className="bg-black border border-white/10 text-white text-xs px-3 py-1.5 focus:outline-none focus:border-white w-full sm:w-auto tracking-widest uppercase"
             >
               <option value="all">ALL COMPANIES</option>
               {companies.map(c => (
@@ -448,60 +480,14 @@ export default function App() {
           </div>
         </section>
 
-        {/* Navigation Tabs */}
-        <nav className="flex border-b border-neutral-800 gap-6 overflow-x-auto text-xs font-bold tracking-widest uppercase">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`pb-3 border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'dashboard'
-                ? 'border-white text-white'
-                : 'border-transparent text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('shifts')}
-            className={`pb-3 border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'shifts'
-                ? 'border-white text-white'
-                : 'border-transparent text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            Shifts ({stats.shiftCount})
-          </button>
-          <button
-            onClick={() => setActiveTab('companies')}
-            className={`pb-3 border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'companies'
-                ? 'border-white text-white'
-                : 'border-transparent text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Building2 className="w-3.5 h-3.5" />
-            Companies ({companies.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`pb-3 border-b-2 transition flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'settings'
-                ? 'border-white text-white'
-                : 'border-transparent text-neutral-500 hover:text-neutral-300'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            Settings
-          </button>
-        </nav>
+
 
         {}
         {activeTab === 'dashboard' && (
           <div className="space-y-8">
             {/* Stat Box Summary Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="border border-neutral-800 bg-neutral-950 p-5 space-y-2">
+              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Total Earnings (LKR)</p>
                 <h3 className="text-xl font-extrabold tracking-tight text-white">{formatLKR(stats.totalEarnings)}</h3>
                 <p className="text-[10px] text-neutral-400">
@@ -509,19 +495,19 @@ export default function App() {
                 </p>
               </div>
 
-              <div className="border border-neutral-800 bg-neutral-950 p-5 space-y-2">
+              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Hours Worked</p>
                 <h3 className="text-xl font-extrabold tracking-tight text-white">{stats.totalHours} <span className="text-xs font-normal text-neutral-500">HRS</span></h3>
                 <p className="text-[10px] text-neutral-400">{stats.shiftCount} shift entries logged</p>
               </div>
 
-              <div className="border border-neutral-800 bg-neutral-950 p-5 space-y-2">
+              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Avg Hourly Rate</p>
                 <h3 className="text-xl font-extrabold tracking-tight text-white">{formatLKR(stats.avgHourlyRate)}<span className="text-xs font-normal text-neutral-500">/hr</span></h3>
                 <p className="text-[10px] text-neutral-400">Effective average rate</p>
               </div>
 
-              <div className="border border-neutral-800 bg-neutral-950 p-5 space-y-2">
+              <div className="border border-white/10 glass-panel animate-fade-in p-5 space-y-2">
                 <p className="text-[10px] text-neutral-500 uppercase tracking-widest">Active Employers</p>
                 <h3 className="text-xl font-extrabold tracking-tight text-white">{companies.length}</h3>
                 <p className="text-[10px] text-neutral-400">Configured in system</p>
@@ -529,8 +515,8 @@ export default function App() {
             </div>
 
             {/* Earnings Breakdown Section */}
-            <div className="border border-neutral-800 bg-neutral-950 p-6 space-y-6">
-              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+            <div className="border border-white/10 glass-panel animate-fade-in p-6 space-y-6">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
                   <Briefcase className="w-4 h-4" /> Earnings Breakdown By Company
                 </h2>
@@ -556,7 +542,7 @@ export default function App() {
                     const percentage = stats.totalEarnings > 0 ? ((data.earnings / stats.totalEarnings) * 100).toFixed(1) : 0;
 
                     return (
-                      <div key={compId} className="border border-neutral-800 bg-black p-4 space-y-3">
+                      <div key={compId} className="border border-white/10 bg-black p-4 space-y-3">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-white tracking-widest uppercase">{company.name}</span>
                           <div className="text-right">
@@ -582,8 +568,8 @@ export default function App() {
             </div>
 
             {/* Recent Shifts Table */}
-            <div className="border border-neutral-800 bg-neutral-950 p-6 space-y-4">
-              <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+            <div className="border border-white/10 glass-panel animate-fade-in p-6 space-y-4">
+              <div className="flex justify-between items-center border-b border-white/10 pb-3">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
                   <Clock className="w-4 h-4" /> Recent Shift Logs
                 </h2>
@@ -608,7 +594,7 @@ export default function App() {
                         <div className="space-y-1">
                           <div className="flex items-center gap-3">
                             <span className="font-bold text-white tracking-widest">{shift.date}</span>
-                            <span className="text-[10px] border border-neutral-800 px-1.5 py-0.5 text-neutral-400 uppercase">
+                            <span className="text-[10px] border border-white/10 px-1.5 py-0.5 text-neutral-400 uppercase">
                               {getDayName(shift.date)}
                             </span>
                             <span className="text-[10px] text-neutral-300 uppercase font-bold">
@@ -657,7 +643,7 @@ export default function App() {
             </div>
 
             {filteredShifts.length === 0 ? (
-              <div className="border border-neutral-800 bg-neutral-950 p-12 text-center space-y-4">
+              <div className="border border-white/10 glass-panel animate-fade-in p-12 text-center space-y-4">
                 <p className="text-xs text-neutral-500 uppercase tracking-widest">No work shifts recorded for this view</p>
                 <button
                   onClick={() => {
@@ -677,12 +663,12 @@ export default function App() {
                   return (
                     <div
                       key={shift.id}
-                      className="border border-neutral-800 bg-neutral-950 p-4 transition flex flex-col sm:flex-row justify-between sm:items-center gap-4"
+                      className="border border-white/10 glass-panel animate-fade-in p-4 transition flex flex-col sm:flex-row justify-between sm:items-center gap-4"
                     >
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-3">
                           <span className="font-bold text-white text-xs tracking-widest">{shift.date}</span>
-                          <span className="text-[10px] border border-neutral-800 px-2 py-0.5 text-neutral-400 uppercase">
+                          <span className="text-[10px] border border-white/10 px-2 py-0.5 text-neutral-400 uppercase">
                             {getDayName(shift.date)}
                           </span>
                           <span className="text-[10px] bg-white text-black font-bold px-2 py-0.5 uppercase tracking-wider">
@@ -701,7 +687,7 @@ export default function App() {
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-neutral-800">
+                      <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-3 sm:pt-0 border-white/10">
                         <div className="text-left sm:text-right">
                           <div className="text-sm font-extrabold text-white tracking-widest">
                             {formatLKR(shift.earnings)}
@@ -719,14 +705,14 @@ export default function App() {
                               setEditingShift(shift);
                               setShiftModalOpen(true);
                             }}
-                            className="p-1.5 border border-neutral-800 hover:border-white text-neutral-400 hover:text-white transition"
+                            className="p-1.5 border border-white/10 hover:border-white text-neutral-400 hover:text-white transition"
                             title="Edit Shift"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirm({ type: 'shift', id: shift.id, title: `Shift on ${shift.date}` })}
-                            className="p-1.5 border border-neutral-800 hover:border-red-500 text-neutral-400 hover:text-red-400 transition"
+                            className="p-1.5 border border-white/10 hover:border-red-500 text-neutral-400 hover:text-red-400 transition"
                             title="Delete Shift"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -761,7 +747,7 @@ export default function App() {
             </div>
 
             {companies.length === 0 ? (
-              <div className="border border-neutral-800 bg-neutral-950 p-12 text-center space-y-4">
+              <div className="border border-white/10 glass-panel animate-fade-in p-12 text-center space-y-4">
                 <p className="text-xs text-neutral-500 uppercase tracking-widest">No companies configured yet</p>
                 <button
                   onClick={() => setCompanyModalOpen(true)}
@@ -776,12 +762,12 @@ export default function App() {
                   return (
                     <div
                       key={company.id}
-                      className="border border-neutral-800 bg-neutral-950 p-6 space-y-6 flex flex-col justify-between"
+                      className="border border-white/10 glass-panel animate-fade-in p-6 space-y-6 flex flex-col justify-between"
                     >
                       <div className="space-y-4">
-                        <div className="flex justify-between items-start border-b border-neutral-800 pb-3">
+                        <div className="flex justify-between items-start border-b border-white/10 pb-3">
                           <div className="space-y-1">
-                            <h3 className="font-bold text-white text-sm tracking-widest uppercase">{company.name}</h3>
+                            <button onClick={() => { setSelectedCompanyId(company.id); setActiveTab('companyDetails'); }} className="font-bold text-white text-sm tracking-widest uppercase hover:underline text-left">{company.name} <ArrowUpRight className="inline w-3 h-3 ml-1" /></button>
                             <p className="text-[10px] text-neutral-400">{company.notes || 'No notes provided'}</p>
                           </div>
 
@@ -791,14 +777,14 @@ export default function App() {
                                 setEditingCompany(company);
                                 setCompanyModalOpen(true);
                               }}
-                              className="p-1.5 border border-neutral-800 hover:border-white text-neutral-400 hover:text-white"
+                              className="p-1.5 border border-white/10 hover:border-white text-neutral-400 hover:text-white"
                               title="Edit Company"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => setDeleteConfirm({ type: 'company', id: company.id, title: company.name })}
-                              className="p-1.5 border border-neutral-800 hover:border-red-500 text-neutral-400 hover:text-red-400"
+                              className="p-1.5 border border-white/10 hover:border-red-500 text-neutral-400 hover:text-red-400"
                               title="Delete Company"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -807,7 +793,7 @@ export default function App() {
                         </div>
 
                         {/* Standard Hourly Rate */}
-                        <div className="bg-black border border-neutral-800 p-3 space-y-2 text-xs">
+                        <div className="bg-black border border-white/10 p-3 space-y-2 text-xs">
                           <div className="flex justify-between items-center">
                             <span className="text-neutral-400 uppercase text-[10px] tracking-wider">Default Hourly Rate:</span>
                             <span className="text-white font-extrabold">{formatLKR(company.defaultRate)}/hr</span>
@@ -815,7 +801,7 @@ export default function App() {
 
                           {/* Day specific overrides */}
                           {company.dayRates && Object.keys(company.dayRates).length > 0 && (
-                            <div className="border-t border-neutral-800 pt-2 space-y-1">
+                            <div className="border-t border-white/10 pt-2 space-y-1">
                               <span className="text-[9px] text-neutral-500 uppercase font-bold tracking-wider block">Custom Day Overrides:</span>
                               <div className="flex flex-wrap gap-2 text-[10px]">
                                 {company.dayRates[0] !== undefined && (
@@ -848,7 +834,7 @@ export default function App() {
                           ) : (
                             <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
                               {company.rateHistory.map(history => (
-                                <div key={history.id} className="text-[11px] bg-black border border-neutral-800 p-2.5 flex justify-between items-center">
+                                <div key={history.id} className="text-[11px] bg-black border border-white/10 p-2.5 flex justify-between items-center">
                                   <div className="space-y-0.5">
                                     <div className="font-bold text-white">
                                       {formatLKR(history.rate)}/HR <span className="text-neutral-500 font-normal text-[10px]">FROM {history.startDate}</span>
@@ -876,10 +862,59 @@ export default function App() {
         )}
 
         {}
+        
+        {activeTab === 'companyDetails' && selectedCompanyId && (() => {
+          const company = companies.find(c => c.id === selectedCompanyId);
+          if (!company) return <div>Company not found</div>;
+          const companyShifts = filteredShifts.filter(s => s.companyId === selectedCompanyId);
+          return (
+            <div className="space-y-6 animate-fade-in">
+              <button onClick={() => setActiveTab('companies')} className="text-xs uppercase text-neutral-400 hover:text-white flex items-center gap-1 mb-4">
+                ← Back to Companies
+              </button>
+              <div className="flex justify-between items-end border-b border-white/10 pb-4">
+                <div>
+                  <h2 className="text-xl font-extrabold tracking-widest text-white uppercase">{company.name}</h2>
+                  <p className="text-[10px] text-neutral-400 tracking-wider uppercase mt-1">Dedicated Company View</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingShift(null);
+                    setShiftModalOpen(true);
+                  }}
+                  className="border border-white bg-white text-black hover:bg-neutral-200 px-4 py-2 text-xs font-bold uppercase tracking-widest transition flex items-center gap-2"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Log Shift Here
+                </button>
+              </div>
+              
+              {companyShifts.length === 0 ? (
+                <div className="glass-panel p-12 text-center text-neutral-500 text-xs uppercase tracking-widest">
+                  No shifts recorded for {company.name}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {companyShifts.map(shift => (
+                    <div key={shift.id} className="glass-panel p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                      <div className="space-y-1 text-xs">
+                        <span className="font-bold text-white tracking-widest">{shift.date}</span>
+                        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">{shift.startTime} - {shift.endTime} ({shift.hoursWorked} HRS)</p>
+                      </div>
+                      <div className="text-right text-sm font-extrabold text-white tracking-widest">
+                        {formatLKR(shift.earnings)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {activeTab === 'settings' && (
           <div className="max-w-2xl mx-auto space-y-6">
-            <div className="border border-neutral-800 bg-neutral-950 p-6 space-y-6">
-              <div className="border-b border-neutral-800 pb-3">
+            <div className="border border-white/10 glass-panel animate-fade-in p-6 space-y-6">
+              <div className="border-b border-white/10 pb-3">
                 <h2 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
                   <Settings className="w-4 h-4" /> Offline Data & Backup
                 </h2>
@@ -902,7 +937,7 @@ export default function App() {
                 </label>
               </div>
 
-              <div className="border-t border-neutral-800 pt-6 space-y-4">
+              <div className="border-t border-white/10 pt-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-white">Load Demo Sample Data</h4>
@@ -916,7 +951,7 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-neutral-800 pt-4">
+                <div className="flex items-center justify-between border-t border-white/10 pt-4">
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-red-400">Clear All Storage</h4>
                     <p className="text-[10px] text-neutral-500">Remove all logged companies and shift entries.</p>
@@ -936,7 +971,7 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Bar Navigation */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-neutral-800 px-4 py-3 flex justify-around items-center">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/95 border-t border-white/10 px-4 py-3 flex justify-around items-center">
         <button
           onClick={() => setActiveTab('dashboard')}
           className={`flex flex-col items-center gap-1 text-[10px] font-bold uppercase tracking-widest ${
@@ -976,6 +1011,54 @@ export default function App() {
       </nav>
 
       {}
+        {/* Navigation Tabs */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 flex justify-around bg-black/90 backdrop-blur-md border-t border-white/10 p-3 text-xs font-bold tracking-widest uppercase">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'dashboard'
+                ? 'border-white text-white'
+                : ' text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('shifts')}
+            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'shifts'
+                ? 'border-white text-white'
+                : ' text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            Shifts ({stats.shiftCount})
+          </button>
+          <button
+            onClick={() => setActiveTab('companies')}
+            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'companies'
+                ? 'border-white text-white'
+                : ' text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            Companies ({companies.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex flex-col items-center gap-1 p-2 transition transition flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'settings'
+                ? 'border-white text-white'
+                : ' text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            Settings
+          </button>
+        </nav>
+
       {shiftModalOpen && (
         <ShiftModal
           isOpen={shiftModalOpen}
@@ -983,6 +1066,7 @@ export default function App() {
           onSave={handleSaveShift}
           companies={companies}
           editingShift={editingShift}
+          preSelectedCompanyId={activeTab === 'companyDetails' ? selectedCompanyId : null}
           getEffectiveRate={getEffectiveRate}
         />
       )}
@@ -1022,7 +1106,7 @@ export default function App() {
             <div className="flex justify-end gap-3 pt-2">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="border border-neutral-800 text-neutral-400 hover:text-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest"
+                className="border border-white/10 text-neutral-400 hover:text-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest"
               >
                 Cancel
               </button>
@@ -1051,17 +1135,19 @@ export default function App() {
 }
 
 
-function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffectiveRate }) {
-  const [companyId, setCompanyId] = useState(editingShift?.companyId || companies[0]?.id || '');
+function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffectiveRate, preSelectedCompanyId }) {
+  const [companyId, setCompanyId] = useState(editingShift?.companyId || preSelectedCompanyId || companies[0]?.id || '');
   const [date, setDate] = useState(editingShift?.date || new Date().toISOString().slice(0, 10));
   const [startTime, setStartTime] = useState(editingShift?.startTime || '09:00');
   const [endTime, setEndTime] = useState(editingShift?.endTime || '17:00');
   const [breakMinutes, setBreakMinutes] = useState(editingShift?.breakMinutes ?? 30);
   const [bonus, setBonus] = useState(editingShift?.bonus || '');
+  const [isFixedHours, setIsFixedHours] = useState(editingShift?.isFixedHours || false);
+  const [fixedHours, setFixedHours] = useState(editingShift?.fixedHours || '1.5');
   const [notes, setNotes] = useState(editingShift?.notes || '');
   
-  const [manualRate, setManualRate] = useState(false);
-  const [customHourlyRate, setCustomHourlyRate] = useState(editingShift?.hourlyRate || '');
+  const [isManualRate, setManualRate] = useState(false);
+  const [customRateVal, setCustomHourlyRate] = useState(editingShift?.hourlyRate || '');
 
   const selectedCompany = companies.find(c => c.id === companyId);
   
@@ -1069,8 +1155,8 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
     return getEffectiveRate(selectedCompany, date);
   }, [selectedCompany, date, getEffectiveRate]);
 
-  const effectiveRate = manualRate ? Number(customHourlyRate || 0) : autoCalculatedRate;
-  const calculatedHours = calculateHours(startTime, endTime, breakMinutes);
+  const effectiveRate = autoCalculatedRate;
+  const calculatedHours = isFixedHours ? Number(fixedHours || 0) : calculateHours(startTime, endTime, breakMinutes);
   const estimatedEarnings = (calculatedHours * effectiveRate) + Number(bonus || 0);
 
   const handleSubmit = (e) => {
@@ -1084,15 +1170,17 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
       breakMinutes,
       bonus: Number(bonus || 0),
       notes,
-      manualRate,
-      hourlyRate: effectiveRate
+      manualRate: false,
+      hourlyRate: effectiveRate,
+      isFixedHours,
+      fixedHours
     });
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="border border-white bg-black max-w-md w-full p-6 space-y-5 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+        <div className="flex justify-between items-center border-b border-white/10 pb-3">
           <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
             <Clock className="w-4 h-4" />
             {editingShift ? 'Edit Shift Log' : 'Log New Work Shift'}
@@ -1104,12 +1192,13 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           {/* Select Employer */}
+          {!preSelectedCompanyId && (
           <div>
             <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Company / Employer</label>
             <select
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white uppercase tracking-widest"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white uppercase tracking-widest"
               required
             >
               {companies.map(c => (
@@ -1117,6 +1206,7 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
               ))}
             </select>
           </div>
+          )}
 
           {/* Date Picker */}
           <div>
@@ -1125,96 +1215,67 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white tracking-widest"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white tracking-widest"
               required
             />
           </div>
 
-          {/* Times */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Start Time</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
-                required
-              />
+          {/* Time Tracking Mode */}
+          <div className="border border-white/10 p-3 glass-panel space-y-3">
+            <div className="flex gap-4 mb-2">
+              <label className="flex items-center gap-2 text-[10px] text-white uppercase tracking-wider cursor-pointer">
+                <input type="radio" checked={!isFixedHours} onChange={() => setIsFixedHours(false)} className="accent-white" />
+                Clock Time
+              </label>
+              <label className="flex items-center gap-2 text-[10px] text-white uppercase tracking-wider cursor-pointer">
+                <input type="radio" checked={isFixedHours} onChange={() => setIsFixedHours(true)} className="accent-white" />
+                Fixed Hours
+              </label>
             </div>
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">End Time</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
-                required
-              />
-            </div>
+
+            {!isFixedHours ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Start Time</label>
+                    <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" required={!isFixedHours} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">End Time</label>
+                    <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" required={!isFixedHours} />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1 mt-2">Break (Minutes)</label>
+                  <input type="number" min="0" value={breakMinutes} onChange={(e) => setBreakMinutes(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Total Paid Hours</label>
+                <input type="number" step="any" min="0" placeholder="e.g. 1.5" value={fixedHours} onChange={(e) => setFixedHours(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" required={isFixedHours} />
+              </div>
+            )}
           </div>
 
-          {/* Break & Bonus */}
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Break (Minutes)</label>
-              <input
-                type="number"
-                min="0"
-                value={breakMinutes}
-                onChange={(e) => setBreakMinutes(e.target.value)}
-                className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
-              />
-            </div>
+            <div className="hidden"></div>
             <div>
               <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Extra Bonus (LKR)</label>
               <input
                 type="number"
                 min="0"
-                step="50"
+                step="any"
                 placeholder="0.00"
                 value={bonus}
                 onChange={(e) => setBonus(e.target.value)}
-                className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
+                className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
               />
             </div>
           </div>
 
-          {/* Rate Preview & Manual Override */}
-          <div className="border border-neutral-800 p-3 space-y-2 bg-neutral-950">
-            <div className="flex justify-between items-center text-[10px] uppercase tracking-wider">
-              <span className="text-neutral-400">Effective Rate ({date}):</span>
-              <span className="text-white font-bold">{formatLKR(autoCalculatedRate)}/hr</span>
-            </div>
-
-            <label className="flex items-center gap-2 text-[10px] text-neutral-400 cursor-pointer pt-1 uppercase tracking-wider">
-              <input
-                type="checkbox"
-                checked={manualRate}
-                onChange={(e) => {
-                  setManualRate(e.target.checked);
-                  if (!e.target.checked) setCustomHourlyRate('');
-                  else setCustomHourlyRate(autoCalculatedRate);
-                }}
-                className="accent-white"
-              />
-              Override hourly rate for this shift
-            </label>
-
-            {manualRate && (
-              <div className="pt-2">
-                <input
-                  type="number"
-                  step="10"
-                  value={customHourlyRate}
-                  onChange={(e) => setCustomHourlyRate(e.target.value)}
-                  className="w-full bg-black border border-neutral-700 px-3 py-1.5 text-white text-xs focus:outline-none"
-                  placeholder="Custom rate in LKR"
-                />
-              </div>
-            )}
-          </div>
-
+          
+          {/* Rate automatically calculated silently in background */}
           {/* Shift Notes */}
           <div>
             <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Notes / Remarks</label>
@@ -1223,7 +1284,7 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Overtime session, Sunday task"
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
             />
           </div>
 
@@ -1243,7 +1304,7 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
             <button
               type="button"
               onClick={onClose}
-              className="border border-neutral-800 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
+              className="border border-white/10 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
             >
               Cancel
             </button>
@@ -1287,7 +1348,7 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="border border-white bg-black max-w-md w-full p-6 space-y-5 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+        <div className="flex justify-between items-center border-b border-white/10 pb-3">
           <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
             <Building2 className="w-4 h-4" />
             {editingCompany ? 'Edit Employer' : 'Add Employer / Company'}
@@ -1305,7 +1366,7 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Acme Lanka Ltd"
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white uppercase tracking-widest"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white uppercase tracking-widest"
               required
             />
           </div>
@@ -1314,17 +1375,17 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
             <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Standard Hourly Rate (LKR / hr)</label>
             <input
               type="number"
-              step="50"
+              step="any"
               min="0"
               value={defaultRate}
               onChange={(e) => setDefaultRate(e.target.value)}
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
               required
             />
           </div>
 
           {/* Day specific rates */}
-          <div className="border border-neutral-800 p-3 bg-neutral-950 space-y-3">
+          <div className="border border-white/10 p-3 glass-panel animate-fade-in space-y-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-white flex items-center gap-1">
               <CalendarDays className="w-3.5 h-3.5" /> Weekend / Specific Day Rates (Optional)
             </span>
@@ -1333,22 +1394,22 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
                 <label className="block text-[9px] uppercase text-neutral-400 mb-1">Saturday Rate (LKR)</label>
                 <input
                   type="number"
-                  step="50"
+                  step="any"
                   placeholder={`Default (${defaultRate})`}
                   value={satRate}
                   onChange={(e) => setSatRate(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-1.5 text-xs text-white focus:outline-none"
+                  className="w-full bg-black border border-white/10 px-3 py-1.5 text-xs text-white focus:outline-none"
                 />
               </div>
               <div>
                 <label className="block text-[9px] uppercase text-neutral-400 mb-1">Sunday Rate (LKR)</label>
                 <input
                   type="number"
-                  step="50"
+                  step="any"
                   placeholder={`Default (${defaultRate})`}
                   value={sunRate}
                   onChange={(e) => setSunRate(e.target.value)}
-                  className="w-full bg-black border border-neutral-800 px-3 py-1.5 text-xs text-white focus:outline-none"
+                  className="w-full bg-black border border-white/10 px-3 py-1.5 text-xs text-white focus:outline-none"
                 />
               </div>
             </div>
@@ -1361,7 +1422,7 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Senior Consultant / Part-time Designer"
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
             />
           </div>
 
@@ -1369,7 +1430,7 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
             <button
               type="button"
               onClick={onClose}
-              className="border border-neutral-800 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
+              className="border border-white/10 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
             >
               Cancel
             </button>
@@ -1404,7 +1465,7 @@ function PromotionModal({ company, onClose, onAdd }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="border border-white bg-black max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-neutral-800 pb-3">
+        <div className="flex justify-between items-center border-b border-white/10 pb-3">
           <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
             <Sparkles className="w-4 h-4" />
             Add Promotion / Pay Revision ({company.name})
@@ -1419,11 +1480,11 @@ function PromotionModal({ company, onClose, onAdd }) {
             <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">New Hourly Rate (LKR / hr)</label>
             <input
               type="number"
-              step="50"
+              step="any"
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="e.g. 1800.00"
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
               required
             />
           </div>
@@ -1434,7 +1495,7 @@ function PromotionModal({ company, onClose, onAdd }) {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white tracking-widest"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white tracking-widest"
               required
             />
             <p className="text-[9px] text-neutral-500 mt-1 uppercase">Shifts logged on or after this date automatically apply this revised rate.</p>
@@ -1447,7 +1508,7 @@ function PromotionModal({ company, onClose, onAdd }) {
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="e.g. Mid-year raise / Promotion to Lead"
-              className="w-full bg-black border border-neutral-800 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
             />
           </div>
 
@@ -1455,7 +1516,7 @@ function PromotionModal({ company, onClose, onAdd }) {
             <button
               type="button"
               onClick={onClose}
-              className="border border-neutral-800 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
+              className="border border-white/10 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
             >
               Cancel
             </button>
