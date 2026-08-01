@@ -2,14 +2,14 @@ import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: "AIzaSyDLQKvEA_0as6P9q-pJjRUCDIYzy7zhHkU",
+  authDomain: "paytrack-lk.firebaseapp.com",
+  databaseURL: "https://paytrack-lk-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "paytrack-lk",
+  storageBucket: "paytrack-lk.firebasestorage.app",
+  messagingSenderId: "954953990514",
+  appId: "1:954953990514:web:19ef0b5bb11d5f45455deb",
+  measurementId: "G-XSWDJH1LXH"
 };
 
 export const app = initializeApp(firebaseConfig);
