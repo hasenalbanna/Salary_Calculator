@@ -36,6 +36,7 @@ import {
   DollarSign,
   Copy,
   Moon,
+  Sun,
   Search,
   Printer,
   Volume2,
@@ -146,7 +147,7 @@ export const isShiftInCompanyPeriod = (shift, company, monthStr) => {
   return shift.date >= startDate && shift.date <= endDate;
 };
 
-// Subtle Web Audio Chime for Futuristic Sound Feedback
+// Subtle Web Audio Chime
 const playChime = (enabled = true) => {
   if (!enabled || typeof window === 'undefined' || !window.AudioContext) return;
   try {
@@ -154,16 +155,16 @@ const playChime = (enabled = true) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.08); // A5
-    gain.gain.setValueAtTime(0.04, ctx.currentTime);
+    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.03, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.12);
   } catch (e) {
-    // Ignore audio permission or context restrictions
+    // Ignore audio permission restrictions
   }
 };
 
@@ -171,6 +172,11 @@ export default function App() {
   const [companies, setCompanies] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Pure Monochrome Theme: 'dark' (black bg, white text) or 'light' (white bg, black text)
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('paytrack_theme') || 'dark';
+  });
 
   const [activeTab, setActiveTab] = useState('home');
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
@@ -184,12 +190,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  // Goal & Tax Modals
+  // Goal & Modals
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [companyGoalModalOpen, setCompanyGoalModalOpen] = useState(false);
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
-  const [calendarViewOpen, setCalendarViewOpen] = useState(false);
 
   // Monthly Target Goal (saved in localStorage)
   const [monthlyGoal, setMonthlyGoal] = useState(() => {
@@ -207,6 +212,22 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState('');
 
   const fileInputRef = useRef(null);
+
+  // Apply theme to document
+  useEffect(() => {
+    localStorage.setItem('paytrack_theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+      document.body.style.backgroundColor = '#000000';
+      document.body.style.color = '#ffffff';
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+      document.body.style.backgroundColor = '#ffffff';
+      document.body.style.color = '#000000';
+    }
+  }, [theme]);
 
   // Sync state with Firebase Realtime Database
   useEffect(() => {
@@ -240,6 +261,10 @@ export default function App() {
     playChime(soundEnabled);
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
   const getEffectiveRate = (company, dateStr) => {
@@ -295,7 +320,6 @@ export default function App() {
 
     const companyBreakdown = {};
 
-    // Initialize company breakdowns including fixed monthly salaries for active period
     companies.forEach(comp => {
       if (companyFilter === 'all' || comp.id === companyFilter) {
         const isMonthly = comp.paymentModel === 'monthly';
@@ -392,7 +416,6 @@ export default function App() {
         earnings: parseFloat(earnings.toFixed(2))
       };
     } else {
-      // Hourly payment model
       const hoursWorked = shiftData.isFixedHours 
         ? Number(shiftData.fixedHours || 0) 
         : calculateHours(shiftData.startTime, shiftData.endTime, shiftData.breakMinutes);
@@ -422,7 +445,6 @@ export default function App() {
     setEditingShift(null);
   };
 
-  // Feature: 1-Click Duplicate Shift
   const handleDuplicateShift = (shift) => {
     const duplicated = {
       ...shift,
@@ -431,10 +453,9 @@ export default function App() {
     };
     const updatedShifts = [duplicated, ...shifts];
     saveToFirebase('shifts', updatedShifts.reduce((acc, curr) => ({...acc, [curr.id]: curr}), {}));
-    showToast('Shift duplicated successfully');
+    showToast('Shift duplicated');
   };
 
-  // Feature: Batch Multi-Day Logger
   const handleBatchLogShifts = (batchConfig) => {
     const { companyId, startDate, endDate, startTime, endTime, breakMinutes, bonus, notes } = batchConfig;
     const company = companies.find(c => c.id === companyId);
@@ -468,7 +489,7 @@ export default function App() {
 
     const merged = [...newShifts, ...shifts];
     saveToFirebase('shifts', merged.reduce((acc, curr) => ({ ...acc, [curr.id]: curr }), {}));
-    showToast(`${newShifts.length} shifts logged in batch!`);
+    showToast(`${newShifts.length} shifts logged in batch`);
     setBatchModalOpen(false);
   };
 
@@ -499,7 +520,7 @@ export default function App() {
   const handleSaveCompany = (companyData) => {
     let updatedCompanies;
     if (editingCompany) {
-      updatedCompanies = companies.map(c => c.id === editingCompany.id ? { ...c, ...companyData } : c);
+      updatedCompanies = companies.map(c => c.id === editingCompany.id ? { ...c, ...companyData, monthlyGoal: editingCompany.monthlyGoal || companyData.monthlyGoal } : c);
       showToast('Company details updated');
     } else {
       const baseRateVal = companyData.defaultRate || companyData.monthlySalary || companyData.productRate || 0;
@@ -542,7 +563,7 @@ export default function App() {
     showToast('Company target goal updated');
   };
 
-  // Feature: CSV Spreadsheet Export
+  // CSV Spreadsheet Export
   const handleExportCSV = () => {
     const headers = ['Date', 'Company', 'Payment Model', 'Start Time', 'End Time', 'Hours / Units', 'Hourly / Unit Rate', 'Bonus (LKR)', 'Earnings (LKR)', 'Notes'];
     const rows = filteredShifts.map(s => {
@@ -572,61 +593,57 @@ export default function App() {
     showToast('CSV Timesheet downloaded');
   };
 
-  // Generate Professional PDF Payslip
+  // PDF Payslip Generator
   const handleGeneratePayslip = (targetCompanyId = null) => {
     const doc = new jsPDF();
     const isSpecificCompany = !!targetCompanyId;
     const comp = isSpecificCompany ? companies.find(c => c.id === targetCompanyId) : null;
     
-    // Header Dark Banner
-    doc.setFillColor(15, 15, 20);
-    doc.rect(0, 0, 210, 36, 'F');
+    doc.setFillColor(0, 0, 0);
+    doc.rect(0, 0, 210, 32, 'F');
     
-    doc.setTextColor(0, 243, 255);
-    doc.setFontSize(20);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    doc.text("PAYTRACK LK - PAYSLIP", 14, 18);
+    doc.text("PAYTRACK LK - STATEMENT", 14, 16);
     
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(180, 180, 190);
-    doc.text("SRI LANKAN WORK & SALARY SUMMARY STATEMENT", 14, 26);
+    doc.setTextColor(200, 200, 200);
+    doc.text("SALARY & WORK SUMMARY", 14, 24);
     
     const cycleRange = comp 
       ? getCompanyDateRange(comp, selectedMonth) 
       : { label: selectedMonth === 'all' ? 'All Time' : selectedMonth };
     
-    let y = 46;
-    doc.setTextColor(50, 50, 50);
+    let y = 42;
+    doc.setTextColor(0, 0, 0);
     doc.setFontSize(10);
-    doc.text(`Generated Date: ${new Date().toLocaleDateString('en-GB')}`, 14, y);
-    doc.text(`Billing Cycle / Period: ${cycleRange.label} (${selectedMonth === 'all' ? 'All Time' : selectedMonth})`, 14, y + 6);
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-GB')}`, 14, y);
+    doc.text(`Period / Cycle: ${cycleRange.label} (${selectedMonth === 'all' ? 'All Time' : selectedMonth})`, 14, y + 6);
     
     if (comp) {
-      doc.text(`Employer / Client: ${comp.name}`, 14, y + 12);
-      const modelLabel = comp.paymentModel === 'monthly' ? 'Fixed Monthly' : comp.paymentModel === 'product' ? 'Per Product / Task' : 'Hourly';
-      doc.text(`Payment Structure: ${modelLabel}`, 14, y + 18);
+      doc.text(`Employer: ${comp.name}`, 14, y + 12);
+      const modelLabel = comp.paymentModel === 'monthly' ? 'Fixed Monthly' : comp.paymentModel === 'product' ? 'Per Product' : 'Hourly';
+      doc.text(`Structure: ${modelLabel}`, 14, y + 18);
       y += 18;
     }
     
-    // Highlight Summary Box
     const periodEarnings = comp 
       ? (stats.companyBreakdown[comp.id]?.earnings || 0)
       : stats.totalEarnings;
       
-    doc.setDrawColor(188, 19, 254);
-    doc.setLineWidth(0.4);
-    doc.setFillColor(250, 245, 255);
-    doc.rect(14, y + 6, 182, 16, 'FD');
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.rect(14, y + 6, 182, 16);
     doc.setFontSize(11);
-    doc.setTextColor(80, 80, 80);
+    doc.setTextColor(60, 60, 60);
     doc.text("TOTAL NET EARNINGS:", 20, y + 17);
     doc.setFontSize(13);
     doc.setFont('helvetica', 'bold');
-    doc.setTextColor(188, 19, 254);
+    doc.setTextColor(0, 0, 0);
     doc.text(formatLKR(periodEarnings), 130, y + 17);
     
-    // Build Shift Table
     const relevantShifts = comp 
       ? filteredShifts.filter(s => s.companyId === comp.id)
       : filteredShifts;
@@ -655,14 +672,14 @@ export default function App() {
       startY: y + 28,
       head: [['Date', 'Company', 'Work / Hours / Units', 'Bonus', 'Earnings']],
       body: tableData,
-      headStyles: { fillColor: [15, 15, 20], textColor: [0, 243, 255] },
-      alternateRowStyles: { fillColor: [248, 248, 250] },
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255] },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
       styles: { fontSize: 8.5 }
     });
 
-    const filePrefix = comp ? `payslip_${comp.name.replace(/\s+/g, '_')}` : 'paytrack_statement';
+    const filePrefix = comp ? `statement_${comp.name.replace(/\s+/g, '_')}` : 'paytrack_statement';
     doc.save(`${filePrefix}_${selectedMonth}.pdf`);
-    showToast('PDF Payslip downloaded successfully');
+    showToast('PDF Payslip downloaded');
   };
 
   // Data Export (JSON Backup)
@@ -704,7 +721,7 @@ export default function App() {
 
           saveToFirebase('companies', companiesArray.reduce((acc, curr) => ({ ...acc, [curr.id]: curr }), {}));
           saveToFirebase('shifts', shiftsArray.reduce((acc, curr) => ({ ...acc, [curr.id]: curr }), {}));
-          showToast('Data restored and synced to Firebase');
+          showToast('Data restored and synced');
         } else {
           showToast('Invalid JSON file format');
         }
@@ -716,25 +733,21 @@ export default function App() {
     e.target.value = '';
   };
 
-  // Feature: Comprehensive Month History Discovery
+  // Comprehensive Month History Discovery
   const monthOptions = useMemo(() => {
     const set = new Set();
-    
-    // 1. Gather all distinct months from recorded shifts
     shifts.forEach(s => {
       if (s.date && s.date.length >= 7) {
         set.add(s.date.slice(0, 7));
       }
     });
 
-    // 2. Also ensure current and past 12 months are in the set
     const today = new Date();
     for (let i = 0; i < 12; i++) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
       set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
     }
 
-    // 3. Sort months descending
     const sorted = Array.from(set).sort().reverse();
     const opts = [{ value: 'all', label: 'ALL TIME' }];
     sorted.forEach(val => {
@@ -746,7 +759,7 @@ export default function App() {
     return opts;
   }, [shifts]);
 
-  // Feature: Prev / Next Month Step Navigation
+  // Prev / Next Month Step Navigation
   const stepMonth = (direction) => {
     if (selectedMonth === 'all') {
       const today = new Date();
@@ -774,7 +787,7 @@ export default function App() {
   const chartDataDaily = useMemo(() => {
     const dayMap = {};
     filteredShifts.forEach(s => {
-      const shortDate = s.date.slice(5); // e.g. "10-04"
+      const shortDate = s.date.slice(5);
       if (!dayMap[shortDate]) dayMap[shortDate] = 0;
       dayMap[shortDate] += Number(s.earnings || 0);
     });
@@ -784,7 +797,7 @@ export default function App() {
     }));
   }, [filteredShifts]);
 
-  // Feature: Target Progress Calculation
+  // Target Progress Calculation
   const goalProgress = useMemo(() => {
     if (!monthlyGoal || monthlyGoal <= 0) return 0;
     return Math.min(100, Math.round((stats.totalEarnings / monthlyGoal) * 100));
@@ -796,69 +809,91 @@ export default function App() {
   const compBreakdown = selectedCompanyId ? stats.companyBreakdown[selectedCompanyId] : null;
   const compEarn = compBreakdown?.earnings || 0;
 
-  // Feature: Company-specific Target Goal Progress
+  // Company-specific Target Goal Progress
   const compGoalProgress = useMemo(() => {
     if (!selectedComp?.monthlyGoal || selectedComp?.monthlyGoal <= 0) return 0;
     return Math.min(100, Math.round((compEarn / selectedComp.monthlyGoal) * 100));
   }, [compEarn, selectedComp]);
 
+  // Strict Monochrome theme helper styles: pure black bg and white text in dark mode; pure white bg and black text in light mode
+  const isDark = theme === 'dark';
+  const containerClass = isDark ? 'bg-black text-white' : 'bg-white text-black';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const inputClass = isDark ? 'bg-black text-white border-white/30 focus:border-white placeholder:text-white/40' : 'bg-white text-black border-black/30 focus:border-black placeholder:text-black/40';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-mono select-none relative pb-16">
+    <div className={`min-h-screen ${containerClass} font-mono select-none relative pb-16 transition-colors duration-200`}>
       
-      {/* Toast */}
+      {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-black box-glow-cyan text-white px-4 py-2 text-xs font-bold uppercase tracking-widest animate-fade-in flex items-center gap-2 shadow-2xl">
-          <CheckCircle2 className="w-3.5 h-3.5 glow-cyan" /> {toastMessage}
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 ${isDark ? 'bg-white text-black' : 'bg-black text-white'} px-4 py-2 text-xs font-bold uppercase tracking-widest animate-fade-in flex items-center gap-2 shadow-2xl border ${borderClass}`}>
+          <CheckCircle2 className="w-3.5 h-3.5" /> {toastMessage}
         </div>
       )}
 
       {isHome ? (
-        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6 animate-fade-in">
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5 animate-fade-in">
           
-          {/* FEATURE 4: Black Cyber Header Hero Artwork */}
-          <div className="relative overflow-hidden border border-white/20 bg-black box-glow-cyan">
+          {/* Header Banner */}
+          <div className={`relative overflow-hidden border ${borderClass} ${isDark ? 'bg-black' : 'bg-white'}`}>
             <img 
               src="/header_black_banner.jpg" 
-              alt="PayTrack Black Header" 
-              className="w-full h-32 sm:h-44 object-cover opacity-90 hover:opacity-100 transition duration-500" 
+              alt="PayTrack Header" 
+              className={`w-full h-32 sm:h-40 object-cover ${isDark ? 'opacity-85' : 'opacity-20 filter contrast-150 grayscale'}`} 
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent flex items-end p-4">
+            <div className={`absolute inset-0 ${isDark ? 'bg-gradient-to-t from-black via-black/50 to-transparent' : 'bg-gradient-to-t from-white via-white/80 to-transparent'} flex items-end p-4`}>
               <div className="w-full flex justify-between items-end">
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-[0.25em] text-[var(--neon-cyan)] glow-cyan flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" /> Sri Lanka Salary & Shift System
+                  <span className={`text-[10px] font-bold uppercase tracking-[0.25em] ${isDark ? 'text-white' : 'text-black'}`}>
+                    Salary & Shift Calculator
                   </span>
-                  <h2 className="text-xl sm:text-2xl font-black tracking-widest uppercase text-white glow-purple">
+                  <h1 className={`text-xl sm:text-2xl font-black tracking-widest uppercase ${isDark ? 'text-white' : 'text-black'}`}>
                     PAYTRACK LK
-                  </h2>
+                  </h1>
                 </div>
-                <button
-                  onClick={() => setSoundEnabled(!soundEnabled)}
-                  className="p-1.5 border border-white/20 text-neutral-400 hover:text-white text-[10px] bg-black/60"
-                  title={soundEnabled ? 'Sound FX On' : 'Sound FX Muted'}
-                >
-                  {soundEnabled ? <Volume2 className="w-3.5 h-3.5 glow-cyan" /> : <VolumeX className="w-3.5 h-3.5" />}
-                </button>
+                
+                {/* Theme & Sound Controls */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={toggleTheme}
+                    className={`px-2 py-1 border ${isDark ? 'border-white/40 text-white hover:bg-white hover:text-black' : 'border-black/40 text-black hover:bg-black hover:text-white'} text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition`}
+                    title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  >
+                    {isDark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+                    <span>{isDark ? 'LIGHT' : 'DARK'}</span>
+                  </button>
+                  <button
+                    onClick={() => setSoundEnabled(!soundEnabled)}
+                    className={`p-1 border ${isDark ? 'border-white/40 text-white hover:bg-white hover:text-black' : 'border-black/40 text-black hover:bg-black hover:text-white'} text-[10px] transition`}
+                    title={soundEnabled ? 'Mute Sound FX' : 'Enable Sound FX'}
+                  >
+                    {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Top Period Navigation & Stepper */}
-          <div className="flex flex-wrap justify-between items-center border-b border-white/20 pb-4 gap-3 bg-black/40 p-3">
+          {/* Period Navigation */}
+          <div className={`flex flex-wrap justify-between items-center border ${borderClass} p-3 gap-3 ${cardClass}`}>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => stepMonth(-1)}
-                className="p-1.5 border border-white/20 hover:border-white text-neutral-300 hover:text-white"
+                className={`p-1.5 border ${borderClass} hover:border-current text-xs`}
                 title="Previous Month"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-neutral-400" />
+                <Calendar className={`w-4 h-4 ${subtextClass}`} />
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="bg-black border border-white/20 text-white text-xs px-2.5 py-1.5 focus:outline-none focus:border-[var(--neon-cyan)] uppercase tracking-wider box-glow-cyan"
+                  className={`text-xs px-2.5 py-1.5 focus:outline-none uppercase tracking-wider border ${borderClass} ${inputClass}`}
                 >
                   {monthOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label.toUpperCase()}</option>
@@ -867,39 +902,38 @@ export default function App() {
               </div>
               <button
                 onClick={() => stepMonth(1)}
-                className="p-1.5 border border-white/20 hover:border-white text-neutral-300 hover:text-white"
+                className={`p-1.5 border ${borderClass} hover:border-current text-xs`}
                 title="Next Month"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Direct HTML5 Month Picker */}
             <div className="flex items-center gap-2 text-[10px]">
-              <span className="text-neutral-500 uppercase tracking-widest">Jump to:</span>
+              <span className={`${subtextClass} uppercase tracking-widest`}>Jump:</span>
               <input
                 type="month"
                 value={selectedMonth !== 'all' ? selectedMonth : ''}
                 onChange={(e) => e.target.value && setSelectedMonth(e.target.value)}
-                className="bg-black border border-white/20 text-white text-xs px-2 py-1 focus:outline-none focus:border-[var(--neon-cyan)]"
+                className={`text-xs px-2 py-1 focus:outline-none border ${borderClass} ${inputClass}`}
               />
             </div>
           </div>
 
-          {/* Search Bar & Filter */}
+          {/* Search Bar */}
           <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+            <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${subtextClass}`} />
             <input
               type="text"
-              placeholder="Search shifts by company, date (YYYY-MM-DD), or notes..."
+              placeholder="Search shifts by company, date, or notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-black border border-white/10 pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:border-[var(--neon-cyan)]"
+              className={`w-full border ${borderClass} pl-9 pr-8 py-2 text-xs focus:outline-none ${inputClass}`}
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white text-xs"
+                className={`absolute right-3 top-1/2 -translate-y-1/2 ${subtextClass} hover:text-current text-xs`}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -907,55 +941,55 @@ export default function App() {
           </div>
 
           {/* Quick Actions Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-black/60 border border-white/10 p-2.5 text-[10px]">
-            <span className="font-bold uppercase tracking-widest text-neutral-500 flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 glow-cyan" /> Tools & Export
+          <div className={`flex flex-wrap items-center justify-between gap-2 border ${borderClass} p-2.5 text-[10px] ${cardClass}`}>
+            <span className={`font-bold uppercase tracking-widest ${subtextClass} flex items-center gap-1.5`}>
+              <Layers className="w-3.5 h-3.5" /> Tools
             </span>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => handleGeneratePayslip()}
-                className="btn-cyan px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 hover:box-glow-cyan transition"
-                title="Generate PDF Payslip"
+                className={`px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${primaryBtnClass} transition`}
+                title="Generate PDF Statement"
               >
                 <FileText className="w-3.5 h-3.5" /> PDF
               </button>
               <button
                 onClick={handleExportCSV}
-                className="border border-white/20 text-neutral-300 hover:text-white px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 transition"
+                className={`px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${outlineBtnClass} transition`}
                 title="Export CSV Spreadsheet"
               >
                 <FileText className="w-3.5 h-3.5" /> CSV
               </button>
               <button
                 onClick={() => window.print()}
-                className="border border-white/20 text-neutral-300 hover:text-white px-2 py-1 font-bold uppercase tracking-wider flex items-center gap-1 transition"
-                title="Print Clean Statement"
+                className={`px-2 py-1 font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${outlineBtnClass} transition`}
+                title="Print Statement"
               >
                 <Printer className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => setTaxModalOpen(true)}
-                className="border border-white/20 text-[var(--neon-purple)] hover:text-white px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 transition"
+                className={`px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${outlineBtnClass} transition`}
                 title="EPF / ETF / Tax Estimator"
               >
                 <Calculator className="w-3.5 h-3.5" /> EPF/Tax
               </button>
               <button
                 onClick={() => setBatchModalOpen(true)}
-                className="border border-white/20 text-[var(--neon-cyan)] hover:text-white px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 transition"
-                title="Batch Multi-Day Shift Logger"
+                className={`px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${outlineBtnClass} transition`}
+                title="Batch Multi-Day Logger"
               >
-                <CalendarDays className="w-3.5 h-3.5" /> Batch Log
+                <CalendarDays className="w-3.5 h-3.5" /> Batch
               </button>
               <button
                 onClick={handleExportData}
-                className="border border-white/20 text-neutral-300 hover:text-white px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 transition"
+                className={`px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${outlineBtnClass} transition`}
                 title="Export JSON Backup"
               >
                 <Download className="w-3.5 h-3.5" /> Backup
               </button>
               <label
-                className="border border-white/20 text-neutral-300 hover:text-white px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer transition"
+                className={`px-2.5 py-1 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer border ${borderClass} ${outlineBtnClass} transition`}
                 title="Import JSON Backup"
               >
                 <Upload className="w-3.5 h-3.5" /> Restore
@@ -970,13 +1004,13 @@ export default function App() {
             </div>
           </div>
 
-          {/* Hero Period Earnings Card */}
-          <div className="text-center py-6 border border-white/10 bg-black/40 box-glow-purple space-y-3">
-            <p className="text-xs text-neutral-400 uppercase tracking-widest">Total Period Earnings</p>
-            <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tighter glow-purple">
+          {/* Period Earnings Hero Card */}
+          <div className={`text-center py-6 border ${borderClass} ${cardClass} space-y-3`}>
+            <p className={`text-xs ${subtextClass} uppercase tracking-widest`}>Total Period Earnings</p>
+            <h2 className="text-4xl sm:text-5xl font-black tracking-tight">
               {formatLKR(stats.totalEarnings)}
             </h2>
-            <div className="flex flex-wrap justify-center gap-3 text-[10px] text-neutral-400 uppercase tracking-wider">
+            <div className={`flex flex-wrap justify-center gap-3 text-[10px] ${subtextClass} uppercase tracking-wider`}>
               <span>{stats.shiftCount} SHIFTS</span>
               {stats.totalHours > 0 && <span>• {stats.totalHours} TOTAL HOURS</span>}
               {stats.totalProducts > 0 && <span>• {stats.totalProducts} PRODUCTS</span>}
@@ -986,41 +1020,42 @@ export default function App() {
 
             {/* Target Monthly Goal Progress Bar */}
             <div className="pt-2 px-6 max-w-md mx-auto">
-              <div className="flex justify-between items-center text-[10px] text-neutral-400 uppercase tracking-wider mb-1">
-                <span className="flex items-center gap-1 cursor-pointer hover:text-white" onClick={() => setGoalModalOpen(true)}>
-                  <Target className="w-3 h-3 text-[var(--neon-cyan)]" /> Goal: {formatLKR(monthlyGoal)} ({goalProgress}%)
+              <div className="flex justify-between items-center text-[10px] uppercase tracking-wider mb-1">
+                <span className={`flex items-center gap-1 cursor-pointer ${subtextClass} hover:text-current`} onClick={() => setGoalModalOpen(true)}>
+                  <Target className="w-3 h-3" /> Goal: <strong className={isDark ? 'text-white' : 'text-black'}>{formatLKR(monthlyGoal)}</strong> ({goalProgress}%)
                 </span>
-                <button onClick={() => setGoalModalOpen(true)} className="text-[9px] text-[var(--neon-cyan)] underline">Set Goal</button>
+                <button onClick={() => setGoalModalOpen(true)} className="text-[9px] underline font-bold">Set Goal</button>
               </div>
-              <div className="w-full bg-neutral-900 h-2 border border-white/20 overflow-hidden">
+              <div className={`w-full h-1.5 border ${borderClass} overflow-hidden ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
                 <div 
-                  className="h-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] transition-all duration-500" 
+                  className={`h-full ${isDark ? 'bg-white' : 'bg-black'} transition-all duration-300`} 
                   style={{ width: `${goalProgress}%` }}
                 />
               </div>
             </div>
           </div>
 
-          {/* Recharts Analytics Card */}
+          {/* Visual Analytics Chart */}
           <EarningsChart 
             chartDataWorkplaces={chartDataWorkplaces} 
             chartDataDaily={chartDataDaily} 
+            theme={theme}
           />
 
           {/* Company List */}
           <div className="space-y-3">
-            <div className="flex justify-between items-center border-b border-white/10 pb-2">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Your Workplaces ({companies.length})</h3>
+            <div className={`flex justify-between items-center border-b ${borderClass} pb-2`}>
+              <h3 className={`text-[10px] font-bold uppercase tracking-widest ${subtextClass}`}>Your Workplaces ({companies.length})</h3>
               <button 
                 onClick={() => { setEditingCompany(null); setCompanyModalOpen(true); }} 
-                className="text-[10px] uppercase font-bold text-[var(--neon-cyan)] hover:glow-cyan transition flex items-center gap-1"
+                className="text-[10px] uppercase font-bold hover:underline flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" /> Add Company
               </button>
             </div>
 
             {companies.length === 0 ? (
-              <p className="text-xs text-neutral-600 italic text-center py-8">No companies created yet. Click "+ Add Company" above.</p>
+              <p className={`text-xs ${subtextClass} italic text-center py-8`}>No workplaces registered yet. Click "+ Add Company" above.</p>
             ) : (
               companies.map(c => {
                 const ce = stats.companyBreakdown[c.id]?.earnings || 0;
@@ -1031,20 +1066,20 @@ export default function App() {
                   <button
                     key={c.id}
                     onClick={() => { setSelectedCompanyId(c.id); setActiveTab('companyDetails'); }}
-                    className="w-full bg-black border border-white/10 p-4 sm:p-5 flex justify-between items-center transition hover:box-glow-purple group text-left"
+                    className={`w-full border ${borderClass} p-4 sm:p-5 flex justify-between items-center transition hover:border-current group text-left ${cardClass}`}
                   >
                     <div className="space-y-1 min-w-0 pr-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold uppercase tracking-widest text-sm group-hover:glow-purple transition truncate">{c.name}</span>
-                        <span className="text-[9px] border border-white/20 px-1 py-0.2 text-[var(--neon-cyan)] uppercase">{modelBadge}</span>
+                        <span className="font-bold uppercase tracking-widest text-sm truncate">{c.name}</span>
+                        <span className={`text-[9px] border ${borderClass} px-1 py-0.2 uppercase ${subtextClass}`}>{modelBadge}</span>
                       </div>
-                      <p className="text-[10px] text-neutral-500 tracking-wider">
+                      <p className={`text-[10px] ${subtextClass} tracking-wider`}>
                         Cycle: {cycle.label}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="font-extrabold text-sm">{formatLKR(ce)}</span>
-                      <ArrowUpRight className="w-4 h-4 text-neutral-600 group-hover:glow-purple transition" />
+                      <ArrowUpRight className={`w-4 h-4 ${subtextClass} group-hover:text-current transition`} />
                     </div>
                   </button>
                 );
@@ -1054,17 +1089,17 @@ export default function App() {
         </div>
       ) : (
         /* Company Details View (Drill Down) */
-        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5 animate-slide-up">
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4 animate-slide-up">
           
           {/* Header Row: Back, Title, Actions */}
-          <div className="flex items-center justify-between border-b border-white/20 pb-3 gap-3">
+          <div className={`flex items-center justify-between border-b ${borderClass} pb-3 gap-3`}>
             <div className="flex items-center gap-2.5 min-w-0">
-              <button onClick={() => setActiveTab('home')} className="btn-cyan p-1.5" title="Return to Overview">
+              <button onClick={() => setActiveTab('home')} className={`p-1.5 border ${borderClass} ${outlineBtnClass}`} title="Return to Overview">
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <div className="min-w-0">
-                <h2 className="text-lg font-bold tracking-widest uppercase glow-cyan truncate">{selectedComp?.name}</h2>
-                <span className="text-[9px] border border-white/20 px-1 py-0.2 uppercase text-neutral-400">
+                <h2 className="text-lg font-bold tracking-widest uppercase truncate">{selectedComp?.name}</h2>
+                <span className={`text-[9px] border ${borderClass} px-1 py-0.2 uppercase ${subtextClass}`}>
                   {selectedComp?.paymentModel === 'monthly' ? 'Fixed Monthly' : selectedComp?.paymentModel === 'product' ? 'Per Product' : 'Hourly Rate'}
                 </span>
               </div>
@@ -1073,14 +1108,14 @@ export default function App() {
             <div className="flex items-center gap-1.5 shrink-0">
               <button 
                 onClick={() => handleGeneratePayslip(selectedComp?.id)} 
-                className="btn-cyan px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
-                title="Download Company PDF Payslip"
+                className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${primaryBtnClass}`}
+                title="Download Statement"
               >
                 <FileText className="w-3.5 h-3.5" /> PDF
               </button>
               <button 
                 onClick={() => { setEditingCompany(selectedComp); setCompanyModalOpen(true); }} 
-                className="border border-white/20 text-neutral-300 hover:text-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 border ${borderClass} ${outlineBtnClass}`}
                 title="Edit Rates & Pay Cycle"
               >
                 <Settings className="w-3.5 h-3.5" />
@@ -1088,22 +1123,22 @@ export default function App() {
             </div>
           </div>
 
-          {/* Minimalist Month Filter & Pay Cycle Bar inside Company View */}
-          <div className="flex flex-wrap items-center justify-between gap-2 bg-black/60 border border-white/10 p-2.5 text-xs">
+          {/* In-Company Month Filter & Pay Cycle Bar */}
+          <div className={`flex flex-wrap items-center justify-between gap-2 border ${borderClass} p-2 text-xs ${cardClass}`}>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => stepMonth(-1)}
-                className="p-1 border border-white/20 hover:border-white text-neutral-300 hover:text-white"
+                className={`p-1 border ${borderClass} hover:border-current text-xs`}
                 title="Previous Month"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
               </button>
               <div className="flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                <Calendar className={`w-3.5 h-3.5 ${subtextClass}`} />
                 <select
                   value={selectedMonth}
                   onChange={(e) => setSelectedMonth(e.target.value)}
-                  className="bg-black border border-white/20 text-white text-[11px] px-2 py-1 focus:outline-none focus:border-[var(--neon-cyan)] uppercase tracking-wider"
+                  className={`text-[11px] px-2 py-1 focus:outline-none uppercase tracking-wider border ${borderClass} ${inputClass}`}
                 >
                   {monthOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label.toUpperCase()}</option>
@@ -1112,25 +1147,25 @@ export default function App() {
               </div>
               <button
                 onClick={() => stepMonth(1)}
-                className="p-1 border border-white/20 hover:border-white text-neutral-300 hover:text-white"
+                className={`p-1 border ${borderClass} hover:border-current text-xs`}
                 title="Next Month"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
-            <div className="text-[10px] text-neutral-400 tracking-wider">
-              <span className="text-[var(--neon-cyan)]">Cycle:</span> {getCompanyDateRange(selectedComp, selectedMonth).label}
+            <div className={`text-[10px] ${subtextClass} tracking-wider`}>
+              <span>Cycle:</span> {getCompanyDateRange(selectedComp, selectedMonth).label}
             </div>
           </div>
 
-          {/* Earnings & CTA Grid */}
+          {/* Earnings & Log Shift Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="border border-[var(--neon-purple)] bg-black p-4 text-center box-glow-purple flex flex-col justify-center">
-              <p className="text-[10px] text-[var(--neon-purple)] uppercase tracking-widest mb-0.5">Period Earnings</p>
-              <p className="text-2xl font-extrabold glow-purple">{formatLKR(compEarn)}</p>
+            <div className={`border ${borderClass} p-4 text-center flex flex-col justify-center ${cardClass}`}>
+              <p className={`text-[10px] ${subtextClass} uppercase tracking-widest mb-0.5`}>Period Earnings</p>
+              <p className="text-2xl font-black">{formatLKR(compEarn)}</p>
               {selectedComp?.paymentModel === 'monthly' && selectedMonth !== 'all' && (
-                <p className="text-[9px] text-neutral-400 mt-1 uppercase">
+                <p className={`text-[9px] ${subtextClass} mt-1 uppercase`}>
                   (Base: {formatLKR(selectedComp.monthlySalary)} + Extra: {formatLKR(compEarn - (selectedComp.monthlySalary || 0))})
                 </p>
               )}
@@ -1138,7 +1173,7 @@ export default function App() {
             
             <button 
               onClick={() => { setEditingShift(null); setShiftModalOpen(true); }} 
-              className="btn-cyan font-bold text-xs uppercase tracking-widest flex flex-col items-center justify-center p-4 transition hover:box-glow-cyan"
+              className={`font-bold text-xs uppercase tracking-widest flex flex-col items-center justify-center p-4 border ${borderClass} ${primaryBtnClass} transition`}
             >
               <Plus className="w-5 h-5 mb-1" />
               <span>{selectedComp?.paymentModel === 'product' ? 'Log Product Work' : selectedComp?.paymentModel === 'monthly' ? 'Log OT / Entry' : 'Log Shift'}</span>
@@ -1146,27 +1181,27 @@ export default function App() {
           </div>
 
           {/* Minimalist Company Target Goal Bar */}
-          <div className="border border-white/10 bg-black/60 p-3 space-y-1.5">
-            <div className="flex justify-between items-center text-[10px] text-neutral-400 uppercase tracking-wider">
-              <span className="flex items-center gap-1.5">
-                <Target className="w-3 h-3 text-[var(--neon-cyan)]" />
+          <div className={`border ${borderClass} p-3 space-y-1.5 ${cardClass}`}>
+            <div className="flex justify-between items-center text-[10px] uppercase tracking-wider">
+              <span className={`flex items-center gap-1.5 ${subtextClass}`}>
+                <Target className="w-3 h-3" />
                 {selectedComp?.monthlyGoal ? (
-                  <span>Target: <strong className="text-white">{formatLKR(selectedComp.monthlyGoal)}</strong> ({compGoalProgress}%)</span>
+                  <span>Target: <strong className={isDark ? 'text-white' : 'text-black'}>{formatLKR(selectedComp.monthlyGoal)}</strong> ({compGoalProgress}%)</span>
                 ) : (
-                  <span className="text-neutral-500">No monthly target set</span>
+                  <span>No monthly target goal set</span>
                 )}
               </span>
               <button
                 onClick={() => setCompanyGoalModalOpen(true)}
-                className="text-[9px] uppercase font-bold text-[var(--neon-cyan)] hover:underline"
+                className="text-[9px] uppercase font-bold underline"
               >
                 {selectedComp?.monthlyGoal ? 'Edit Goal' : '+ Set Goal'}
               </button>
             </div>
             {selectedComp?.monthlyGoal > 0 && (
-              <div className="w-full bg-neutral-900 h-1.5 border border-white/10 overflow-hidden">
+              <div className={`w-full h-1.5 border ${borderClass} overflow-hidden ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
                 <div 
-                  className="h-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] transition-all duration-500" 
+                  className={`h-full ${isDark ? 'bg-white' : 'bg-black'} transition-all duration-300`} 
                   style={{ width: `${compGoalProgress}%` }}
                 />
               </div>
@@ -1174,74 +1209,74 @@ export default function App() {
           </div>
 
           {/* Shifts / Work History List */}
-          <div className="pt-2 space-y-3">
-            <div className="flex justify-between items-center border-b border-white/10 pb-2">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+          <div className="pt-1 space-y-2.5">
+            <div className={`flex justify-between items-center border-b ${borderClass} pb-2`}>
+              <h3 className={`text-[10px] font-bold uppercase tracking-widest ${subtextClass}`}>
                 Work History ({compShifts.length} Entries)
               </h3>
-              <span className="text-[9px] text-neutral-500 uppercase">
+              <span className={`text-[9px] ${subtextClass} uppercase`}>
                 {getCompanyDateRange(selectedComp, selectedMonth).label}
               </span>
             </div>
 
             {compShifts.length === 0 ? (
-              <p className="text-xs text-neutral-600 italic text-center py-8">No entries recorded in this billing cycle.</p>
+              <p className={`text-xs ${subtextClass} italic text-center py-6`}>No entries recorded in this billing cycle.</p>
             ) : (
               compShifts.map(shift => {
                 const isOvernight = isOvernightShift(shift.startTime, shift.endTime);
 
                 return (
-                  <div key={shift.id} className="border border-white/10 bg-black p-4 flex justify-between items-center hover:border-white/40 transition">
+                  <div key={shift.id} className={`border ${borderClass} p-3.5 flex justify-between items-center hover:border-current transition ${cardClass}`}>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-white tracking-widest text-xs">{shift.date}</span>
+                        <span className="font-bold tracking-widest text-xs">{shift.date}</span>
                         {isOvernight && (
-                          <span className="text-[9px] border border-white/20 px-1 py-0.2 text-amber-400 flex items-center gap-0.5" title="Overnight Shift">
+                          <span className={`text-[9px] border ${borderClass} px-1 py-0.2 flex items-center gap-0.5`} title="Overnight Shift">
                             <Moon className="w-2.5 h-2.5" /> Overnight
                           </span>
                         )}
                       </div>
                       
                       {shift.paymentModel === 'product' || selectedComp?.paymentModel === 'product' ? (
-                        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">
-                          {shift.unitsCompleted || 0} Units <span className="glow-cyan">(@ {formatLKR(shift.unitRate || selectedComp?.productRate || 0)})</span>
-                          {shift.bonus > 0 && <span className="text-neutral-400"> + Bonus {formatLKR(shift.bonus)}</span>}
+                        <p className={`text-[10px] ${subtextClass} uppercase tracking-wider`}>
+                          {shift.unitsCompleted || 0} Units <span>(@ {formatLKR(shift.unitRate || selectedComp?.productRate || 0)})</span>
+                          {shift.bonus > 0 && <span> + Bonus {formatLKR(shift.bonus)}</span>}
                         </p>
                       ) : shift.paymentModel === 'monthly' || selectedComp?.paymentModel === 'monthly' ? (
-                        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">
+                        <p className={`text-[10px] ${subtextClass} uppercase tracking-wider`}>
                           {shift.hoursWorked > 0 ? `${shift.hoursWorked} OT Hrs (@ ${formatLKR(shift.hourlyRate || selectedComp?.overtimeHourlyRate || 0)})` : 'Attendance / Shift'}
-                          {shift.bonus > 0 && <span className="text-neutral-400"> + Bonus {formatLKR(shift.bonus)}</span>}
+                          {shift.bonus > 0 && <span> + Bonus {formatLKR(shift.bonus)}</span>}
                         </p>
                       ) : (
-                        <p className="text-[10px] text-neutral-400 uppercase tracking-wider">
-                          {shift.startTime || '--'} - {shift.endTime || '--'} <span className="glow-cyan">({shift.hoursWorked} HRS)</span>
-                          {shift.bonus > 0 && <span className="text-neutral-400"> + Bonus {formatLKR(shift.bonus)}</span>}
+                        <p className={`text-[10px] ${subtextClass} uppercase tracking-wider`}>
+                          {shift.startTime || '--'} - {shift.endTime || '--'} <span>({shift.hoursWorked} HRS)</span>
+                          {shift.bonus > 0 && <span> + Bonus {formatLKR(shift.bonus)}</span>}
                         </p>
                       )}
-                      {shift.notes && <p className="text-[9px] text-neutral-500 italic">{shift.notes}</p>}
+                      {shift.notes && <p className={`text-[9px] ${subtextClass} italic`}>{shift.notes}</p>}
                     </div>
                     
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="text-right text-sm font-extrabold text-white tracking-widest glow-cyan">
+                    <div className="flex flex-col items-end gap-1.5">
+                      <div className="text-right text-sm font-black tracking-widest">
                         {formatLKR(shift.earnings)}
                       </div>
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-1">
                         <button 
                           onClick={() => handleDuplicateShift(shift)}
-                          className="text-[9px] uppercase tracking-widest text-neutral-400 hover:text-white border border-white/20 px-1.5 py-0.5 transition"
+                          className={`text-[9px] uppercase tracking-widest border ${borderClass} px-1.5 py-0.5 ${outlineBtnClass} transition`}
                           title="Clone Shift"
                         >
                           <Copy className="w-3 h-3" />
                         </button>
                         <button 
                           onClick={() => { setEditingShift(shift); setShiftModalOpen(true); }} 
-                          className="text-[9px] uppercase tracking-widest text-neutral-400 hover:glow-cyan border border-white/20 px-2 py-0.5 transition"
+                          className={`text-[9px] uppercase tracking-widest border ${borderClass} px-2 py-0.5 ${outlineBtnClass} transition`}
                         >
                           Edit
                         </button>
                         <button 
                           onClick={() => setDeleteConfirm({ type: 'shift', id: shift.id, title: `shift on ${shift.date}` })} 
-                          className="text-[9px] uppercase tracking-widest text-neutral-400 hover:glow-purple border border-white/20 px-2 py-0.5 transition"
+                          className={`text-[9px] uppercase tracking-widest border ${borderClass} px-2 py-0.5 ${outlineBtnClass} transition`}
                         >
                           Del
                         </button>
@@ -1265,6 +1300,7 @@ export default function App() {
           editingShift={editingShift}
           preSelectedCompanyId={activeTab === 'companyDetails' ? selectedCompanyId : null}
           getEffectiveRate={getEffectiveRate}
+          theme={theme}
         />
       )}
 
@@ -1275,6 +1311,7 @@ export default function App() {
           onClose={() => setCompanyModalOpen(false)}
           onSave={handleSaveCompany}
           editingCompany={editingCompany}
+          theme={theme}
         />
       )}
 
@@ -1285,6 +1322,7 @@ export default function App() {
           onClose={() => setBatchModalOpen(false)}
           companies={companies}
           onSaveBatch={handleBatchLogShifts}
+          theme={theme}
         />
       )}
 
@@ -1299,6 +1337,7 @@ export default function App() {
             setGoalModalOpen(false);
             showToast('Monthly target goal updated');
           }}
+          theme={theme}
         />
       )}
 
@@ -1314,6 +1353,7 @@ export default function App() {
             handleSaveCompanyGoal(selectedComp?.id, val);
             setCompanyGoalModalOpen(false);
           }}
+          theme={theme}
         />
       )}
 
@@ -1323,6 +1363,7 @@ export default function App() {
           isOpen={taxModalOpen}
           onClose={() => setTaxModalOpen(false)}
           totalGrossEarnings={stats.totalEarnings}
+          theme={theme}
         />
       )}
 
@@ -1335,29 +1376,30 @@ export default function App() {
             handleAddRateRevision(rateModalCompany.id, rev);
             setRateModalCompany(null);
           }}
+          theme={theme}
         />
       )}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="border border-white bg-black max-w-sm w-full p-6 space-y-4 shadow-2xl">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-white" /> Confirm Deletion
+        <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4`}>
+          <div className={`border ${borderClass} ${cardClass} max-w-sm w-full p-5 space-y-4 shadow-2xl`}>
+            <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" /> Confirm Deletion
             </h3>
-            <p className="text-xs text-neutral-400">
-              Are you sure you want to delete <strong className="text-white">{deleteConfirm.title}</strong>? This action cannot be undone.
+            <p className={`text-xs ${subtextClass}`}>
+              Are you sure you want to delete <strong>{deleteConfirm.title}</strong>? This action cannot be undone.
             </p>
-            <div className="flex justify-end gap-3 pt-2">
+            <div className="flex justify-end gap-2 pt-1">
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="border border-white/10 text-neutral-400 hover:text-white px-3 py-1.5 text-xs font-bold uppercase tracking-widest"
+                className={`border ${borderClass} ${outlineBtnClass} px-3 py-1.5 text-xs font-bold uppercase tracking-widest`}
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="border border-white bg-white text-black hover:bg-neutral-200 px-3 py-1.5 text-xs font-bold uppercase tracking-widest"
+                className={`border ${borderClass} ${primaryBtnClass} px-3 py-1.5 text-xs font-bold uppercase tracking-widest`}
               >
                 Delete
               </button>
@@ -1370,52 +1412,55 @@ export default function App() {
   );
 }
 
-// Recharts Visual Analytics Component
-function EarningsChart({ chartDataWorkplaces, chartDataDaily }) {
+// Recharts Visual Analytics Component in Pure Monochrome
+function EarningsChart({ chartDataWorkplaces, chartDataDaily, theme }) {
   const [chartMode, setChartMode] = useState('workplaces');
   const currentData = chartMode === 'workplaces' ? chartDataWorkplaces : chartDataDaily;
   const hasData = currentData && currentData.length > 0 && currentData.some(d => d.earnings > 0);
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
 
   return (
-    <div className="bg-black border border-white/10 p-4 sm:p-5 space-y-3">
-      <div className="flex justify-between items-center border-b border-white/10 pb-2">
+    <div className={`border ${borderClass} p-4 sm:p-5 space-y-3 ${isDark ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <div className={`flex justify-between items-center border-b ${borderClass} pb-2`}>
         <div className="flex items-center gap-2">
-          <BarChart3 className="w-4 h-4 text-[var(--neon-cyan)] glow-cyan" />
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white">Visual Breakdown</h3>
+          <BarChart3 className="w-4 h-4" />
+          <h3 className="text-xs font-bold uppercase tracking-widest">Visual Breakdown</h3>
         </div>
-        <div className="flex gap-1 bg-neutral-950 p-1 border border-white/10 text-[10px]">
+        <div className={`flex gap-1 border ${borderClass} p-0.5 text-[10px]`}>
           <button
             onClick={() => setChartMode('workplaces')}
-            className={`px-2.5 py-1 uppercase font-bold tracking-wider transition ${chartMode === 'workplaces' ? 'bg-[var(--neon-cyan)] text-black' : 'text-neutral-400 hover:text-white'}`}
+            className={`px-2 py-0.5 uppercase font-bold tracking-wider transition ${chartMode === 'workplaces' ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : subtextClass}`}
           >
             Workplaces
           </button>
           <button
             onClick={() => setChartMode('daily')}
-            className={`px-2.5 py-1 uppercase font-bold tracking-wider transition ${chartMode === 'daily' ? 'bg-[var(--neon-purple)] text-white' : 'text-neutral-400 hover:text-white'}`}
+            className={`px-2 py-0.5 uppercase font-bold tracking-wider transition ${chartMode === 'daily' ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : subtextClass}`}
           >
-            Daily Trend
+            Daily
           </button>
         </div>
       </div>
 
       {!hasData ? (
-        <div className="h-40 flex items-center justify-center text-xs text-neutral-600 italic">
+        <div className={`h-40 flex items-center justify-center text-xs ${subtextClass} italic`}>
           No earnings recorded for this period yet.
         </div>
       ) : (
-        <div className="h-48 w-full pt-2">
+        <div className="h-44 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={currentData} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
               <XAxis 
                 dataKey={chartMode === 'workplaces' ? 'name' : 'date'} 
-                stroke="#666" 
+                stroke={isDark ? '#ffffff' : '#000000'} 
                 fontSize={10} 
                 tickLine={false}
                 tickFormatter={(val) => chartMode === 'workplaces' && val && val.length > 10 ? val.slice(0, 9) + '…' : val}
               />
               <YAxis 
-                stroke="#666" 
+                stroke={isDark ? '#ffffff' : '#000000'} 
                 fontSize={10} 
                 tickLine={false}
                 tickFormatter={(val) => `Rs.${val >= 1000 ? Math.round(val / 1000) + 'k' : val}`}
@@ -1424,9 +1469,9 @@ function EarningsChart({ chartDataWorkplaces, chartDataDaily }) {
                 content={({ active, payload, label }) => {
                   if (active && payload && payload.length) {
                     return (
-                      <div className="bg-black border border-white/30 p-2 text-xs shadow-2xl space-y-1">
-                        <p className="font-bold text-white uppercase tracking-wider">{label}</p>
-                        <p className="glow-cyan font-extrabold">{formatLKR(payload[0].value)}</p>
+                      <div className={`border ${isDark ? 'border-white bg-black text-white' : 'border-black bg-white text-black'} p-2 text-xs shadow-2xl space-y-0.5`}>
+                        <p className="font-bold uppercase tracking-wider">{label}</p>
+                        <p className="font-black text-sm">{formatLKR(payload[0].value)}</p>
                       </div>
                     );
                   }
@@ -1435,8 +1480,8 @@ function EarningsChart({ chartDataWorkplaces, chartDataDaily }) {
               />
               <Bar 
                 dataKey="earnings" 
-                fill={chartMode === 'workplaces' ? 'var(--neon-cyan)' : 'var(--neon-purple)'} 
-                radius={[2, 2, 0, 0]}
+                fill={isDark ? '#ffffff' : '#000000'} 
+                radius={[1, 1, 0, 0]}
               />
             </BarChart>
           </ResponsiveContainer>
@@ -1447,26 +1492,21 @@ function EarningsChart({ chartDataWorkplaces, chartDataDaily }) {
 }
 
 // Modal for logging shifts / product work / overtime
-function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffectiveRate, preSelectedCompanyId }) {
+function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffectiveRate, preSelectedCompanyId, theme }) {
   const [companyId, setCompanyId] = useState(editingShift?.companyId || preSelectedCompanyId || companies[0]?.id || '');
   const [date, setDate] = useState(editingShift?.date || new Date().toISOString().slice(0, 10));
   
-  // Time Tracking (Hourly)
   const [startTime, setStartTime] = useState(editingShift?.startTime || '09:00');
   const [endTime, setEndTime] = useState(editingShift?.endTime || '17:00');
-  // REMOVED 30-minute break default! Defaults to 0 / empty
   const [breakMinutes, setBreakMinutes] = useState(editingShift?.breakMinutes !== undefined && editingShift?.breakMinutes !== null ? editingShift.breakMinutes : '');
   const [isFixedHours, setIsFixedHours] = useState(editingShift?.isFixedHours || false);
   const [fixedHours, setFixedHours] = useState(editingShift?.fixedHours || '8');
   
-  // Overtime multiplier (1.0x, 1.5x, 2.0x)
   const [otMultiplier, setOtMultiplier] = useState(1.0);
 
-  // Product Tracking
   const [unitsCompleted, setUnitsCompleted] = useState(editingShift?.unitsCompleted || '');
   const [unitRate, setUnitRate] = useState(editingShift?.unitRate || '');
 
-  // Overtime / Bonus / Notes
   const [otHours, setOtHours] = useState(editingShift?.hoursWorked || '');
   const [bonus, setBonus] = useState(editingShift?.bonus || '');
   const [notes, setNotes] = useState(editingShift?.notes || '');
@@ -1546,29 +1586,36 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
   const isOvernight = isOvernightShift(startTime, endTime);
   const exceedsDailySafety = calculatedHours > 14;
 
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const inputClass = isDark ? 'bg-black text-white border-white/30 focus:border-white placeholder:text-white/40' : 'bg-white text-black border-black/30 focus:border-black placeholder:text-black/40';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="border border-white bg-black max-w-md w-full p-6 space-y-5 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-white/10 pb-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-md w-full p-6 space-y-4 shadow-2xl`}>
+        <div className={`flex justify-between items-center border-b ${borderClass} pb-3`}>
+          <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
             <Clock className="w-4 h-4" />
             {editingShift ? 'Edit Work Log' : 'Log Work Entry'}
           </h3>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+          <button onClick={onClose} className={`${subtextClass} hover:text-current`}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           
-          {/* Select Employer */}
           {!preSelectedCompanyId && (
             <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Company / Employer</label>
+              <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Company / Employer</label>
               <select
                 value={companyId}
                 onChange={(e) => setCompanyId(e.target.value)}
-                className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white uppercase tracking-widest"
+                className={`w-full border px-3 py-2 uppercase tracking-widest ${inputClass}`}
                 required
               >
                 {companies.map(c => (
@@ -1578,28 +1625,25 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
             </div>
           )}
 
-          {/* Date Picker */}
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Date</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Date</label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white tracking-widest"
+              className={`w-full border px-3 py-2 tracking-widest ${inputClass}`}
               required
             />
           </div>
 
-          {/* DYNAMIC FORM BASED ON PAYMENT MODEL */}
           {paymentModel === 'product' ? (
-            /* Per Product / Task Form */
-            <div className="border border-white/10 p-3 glass-panel space-y-3">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-[var(--neon-cyan)] tracking-wider mb-1">
-                <Package className="w-3.5 h-3.5" /> Piece-Rate / Product Output
+            <div className={`border ${borderClass} p-3 space-y-2.5`}>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                <Package className="w-3.5 h-3.5" /> Output Units
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Units / Items Made</label>
+                  <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Units Completed</label>
                   <input
                     type="number"
                     min="1"
@@ -1607,12 +1651,12 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
                     placeholder="e.g. 25"
                     value={unitsCompleted}
                     onChange={(e) => setUnitsCompleted(e.target.value)}
-                    className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                    className={`w-full border px-3 py-2 ${inputClass}`}
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Rate / Unit (LKR)</label>
+                  <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Rate / Unit (LKR)</label>
                   <input
                     type="number"
                     min="0"
@@ -1620,22 +1664,21 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
                     placeholder={selectedCompany?.productRate || '0.00'}
                     value={unitRate}
                     onChange={(e) => setUnitRate(e.target.value)}
-                    className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                    className={`w-full border px-3 py-2 ${inputClass}`}
                   />
                 </div>
               </div>
             </div>
           ) : paymentModel === 'monthly' ? (
-            /* Fixed Monthly Form */
-            <div className="border border-white/10 p-3 glass-panel space-y-3">
-              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase text-[var(--neon-purple)] tracking-wider mb-1">
-                <CalendarDays className="w-3.5 h-3.5" /> Monthly Salary Additions / OT
+            <div className={`border ${borderClass} p-3 space-y-2.5`}>
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                <CalendarDays className="w-3.5 h-3.5" /> Monthly Salary Overtime
               </div>
-              <p className="text-[10px] text-neutral-400">
+              <p className={`text-[10px] ${subtextClass}`}>
                 Base salary ({formatLKR(selectedCompany?.monthlySalary)}) is automatically included. Log optional overtime hours or bonuses below:
               </p>
               <div>
-                <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Overtime Hours (Optional)</label>
+                <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Overtime Hours (Optional)</label>
                 <input
                   type="number"
                   min="0"
@@ -1643,27 +1686,26 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
                   placeholder="e.g. 2.5"
                   value={otHours}
                   onChange={(e) => setOtHours(e.target.value)}
-                  className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                  className={`w-full border px-3 py-2 ${inputClass}`}
                 />
               </div>
             </div>
           ) : (
-            /* Standard Hourly Time Tracking Mode */
-            <div className="border border-white/10 p-3 glass-panel space-y-3">
+            <div className={`border ${borderClass} p-3 space-y-2.5`}>
               <div className="flex justify-between items-center mb-1">
                 <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-[10px] text-white uppercase tracking-wider cursor-pointer">
-                    <input type="radio" checked={!isFixedHours} onChange={() => setIsFixedHours(false)} className="accent-white" />
+                  <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider cursor-pointer">
+                    <input type="radio" checked={!isFixedHours} onChange={() => setIsFixedHours(false)} />
                     Clock Time
                   </label>
-                  <label className="flex items-center gap-2 text-[10px] text-white uppercase tracking-wider cursor-pointer">
-                    <input type="radio" checked={isFixedHours} onChange={() => setIsFixedHours(true)} className="accent-white" />
+                  <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider cursor-pointer">
+                    <input type="radio" checked={isFixedHours} onChange={() => setIsFixedHours(true)} />
                     Fixed Hours
                   </label>
                 </div>
                 {isOvernight && (
-                  <span className="text-[9px] text-amber-400 flex items-center gap-1 font-bold">
-                    <Moon className="w-3 h-3" /> Overnight Shift (+24h)
+                  <span className="text-[9px] flex items-center gap-1 font-bold">
+                    <Moon className="w-3 h-3" /> Overnight (+24h)
                   </span>
                 )}
               </div>
@@ -1672,43 +1714,42 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
                 <>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Start Time</label>
-                      <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" required={!isFixedHours} />
+                      <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Start Time</label>
+                      <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`w-full border px-3 py-2 ${inputClass}`} required={!isFixedHours} />
                     </div>
                     <div>
-                      <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">End Time</label>
-                      <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" required={!isFixedHours} />
+                      <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>End Time</label>
+                      <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={`w-full border px-3 py-2 ${inputClass}`} required={!isFixedHours} />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1 mt-1">Unpaid Break (Minutes - Default: 0)</label>
+                    <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Unpaid Break (Minutes - Default: 0)</label>
                     <input 
                       type="number" 
                       min="0" 
                       placeholder="0" 
                       value={breakMinutes} 
                       onChange={(e) => setBreakMinutes(e.target.value)} 
-                      className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" 
+                      className={`w-full border px-3 py-2 ${inputClass}`} 
                     />
                   </div>
                 </>
               ) : (
                 <div>
-                  <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Total Paid Hours</label>
-                  <input type="number" step="any" min="0" placeholder="e.g. 8" value={fixedHours} onChange={(e) => setFixedHours(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white" required={isFixedHours} />
+                  <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Total Paid Hours</label>
+                  <input type="number" step="any" min="0" placeholder="e.g. 8" value={fixedHours} onChange={(e) => setFixedHours(e.target.value)} className={`w-full border px-3 py-2 ${inputClass}`} required={isFixedHours} />
                 </div>
               )}
 
-              {/* Overtime Multiplier Selector */}
-              <div className="pt-1 flex items-center justify-between border-t border-white/10">
-                <span className="text-[10px] uppercase text-neutral-400">Rate Multiplier:</span>
+              <div className={`pt-1 flex items-center justify-between border-t ${borderClass}`}>
+                <span className={`text-[10px] uppercase ${subtextClass}`}>Multiplier:</span>
                 <div className="flex gap-1 text-[9px]">
                   {[1.0, 1.5, 2.0].map(mult => (
                     <button
                       key={mult}
                       type="button"
                       onClick={() => setOtMultiplier(mult)}
-                      className={`px-2 py-0.5 border ${otMultiplier === mult ? 'border-[var(--neon-cyan)] text-[var(--neon-cyan)] bg-black' : 'border-white/10 text-neutral-400'}`}
+                      className={`px-2 py-0.5 border ${otMultiplier === mult ? (isDark ? 'bg-white text-black font-bold' : 'bg-black text-white font-bold') : borderClass}`}
                     >
                       {mult}x
                     </button>
@@ -1719,15 +1760,14 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
           )}
 
           {exceedsDailySafety && (
-            <div className="border border-amber-500/40 bg-amber-500/10 p-2 text-[10px] text-amber-300 flex items-center gap-1.5">
+            <div className={`border ${borderClass} p-2 text-[10px] flex items-center gap-1.5`}>
               <AlertCircle className="w-3.5 h-3.5 shrink-0" />
               <span>Shift duration is high ({calculatedHours} hrs). Check start/end time.</span>
             </div>
           )}
 
-          {/* Bonus / Extra Cash */}
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Extra Bonus / Incentive (LKR)</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Extra Bonus (LKR)</label>
             <input
               type="number"
               min="0"
@@ -1735,59 +1775,58 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
               placeholder="0.00"
               value={bonus}
               onChange={(e) => setBonus(e.target.value)}
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className={`w-full border px-3 py-2 ${inputClass}`}
             />
           </div>
 
-          {/* Shift Notes */}
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Notes / Remarks</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Notes / Remarks</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Extra task, Sunday duty, Client delivery"
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className={`w-full border px-3 py-2 ${inputClass}`}
             />
           </div>
 
           {/* Live Preview Box */}
-          <div className="border border-white p-3 flex justify-between items-center bg-black">
+          <div className={`border ${borderClass} p-3 flex justify-between items-center ${cardClass}`}>
             <div>
               {paymentModel === 'product' ? (
                 <>
-                  <p className="text-[10px] text-neutral-400 uppercase tracking-widest">{unitsCompleted || 0} UNITS</p>
-                  <p className="text-[9px] text-neutral-500 uppercase">RATE: {formatLKR(unitRate || selectedCompany?.productRate || 0)}/UNIT</p>
+                  <p className={`text-[10px] ${subtextClass} uppercase tracking-widest`}>{unitsCompleted || 0} UNITS</p>
+                  <p className={`text-[9px] ${subtextClass} uppercase`}>RATE: {formatLKR(unitRate || selectedCompany?.productRate || 0)}/UNIT</p>
                 </>
               ) : paymentModel === 'monthly' ? (
                 <>
-                  <p className="text-[10px] text-neutral-400 uppercase tracking-widest">{otHours || 0} OT HOURS</p>
-                  <p className="text-[9px] text-neutral-500 uppercase">OT RATE: {formatLKR(selectedCompany?.overtimeHourlyRate || 0)}/HR</p>
+                  <p className={`text-[10px] ${subtextClass} uppercase tracking-widest`}>{otHours || 0} OT HOURS</p>
+                  <p className={`text-[9px] ${subtextClass} uppercase`}>OT RATE: {formatLKR(selectedCompany?.overtimeHourlyRate || 0)}/HR</p>
                 </>
               ) : (
                 <>
-                  <p className="text-[10px] text-neutral-400 uppercase tracking-widest">{calculatedHours} HRS WORKED</p>
-                  <p className="text-[9px] text-neutral-500 uppercase">RATE: {formatLKR(effectiveHourlyRate)}/HR</p>
+                  <p className={`text-[10px] ${subtextClass} uppercase tracking-widest`}>{calculatedHours} HRS WORKED</p>
+                  <p className={`text-[9px] ${subtextClass} uppercase`}>RATE: {formatLKR(effectiveHourlyRate)}/HR</p>
                 </>
               )}
             </div>
             <div className="text-right">
-              <p className="text-[9px] text-neutral-400 uppercase">ESTIMATED LOG TOTAL</p>
-              <p className="text-base font-extrabold text-white tracking-widest glow-cyan">{formatLKR(estimatedEarnings)}</p>
+              <p className={`text-[9px] ${subtextClass} uppercase`}>ESTIMATED LOG TOTAL</p>
+              <p className="text-base font-black tracking-widest">{formatLKR(estimatedEarnings)}</p>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="border border-white/10 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
+              className={`border ${borderClass} ${outlineBtnClass} px-3.5 py-1.5 font-bold uppercase text-[10px] tracking-widest`}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="border border-white bg-white text-black hover:bg-neutral-200 px-5 py-2 font-bold uppercase text-[10px] tracking-widest transition"
+              className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 font-bold uppercase text-[10px] tracking-widest transition`}
             >
               Save Entry
             </button>
@@ -1799,23 +1838,18 @@ function ShiftModal({ isOpen, onClose, onSave, companies, editingShift, getEffec
 }
 
 // Modal for configuring Company, Payment Model, Rates, and Custom Pay Cycle
-function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
+function CompanyModal({ isOpen, onClose, onSave, editingCompany, theme }) {
   const [name, setName] = useState(editingCompany?.name || '');
   const [paymentModel, setPaymentModel] = useState(editingCompany?.paymentModel || 'hourly');
   
-  // Hourly Rates
   const [defaultRate, setDefaultRate] = useState(editingCompany?.defaultRate ?? 1000.00);
   const [sunRate, setSunRate] = useState(editingCompany?.dayRates?.[0] ?? '');
   const [satRate, setSatRate] = useState(editingCompany?.dayRates?.[6] ?? '');
 
-  // Monthly Rates
   const [monthlySalary, setMonthlySalary] = useState(editingCompany?.monthlySalary ?? 50000.00);
   const [overtimeHourlyRate, setOvertimeHourlyRate] = useState(editingCompany?.overtimeHourlyRate ?? '');
 
-  // Product Rates
   const [productRate, setProductRate] = useState(editingCompany?.productRate ?? 250.00);
-
-  // Pay Cycle Start Day (1 to 31)
   const [payCycleStartDay, setPayCycleStartDay] = useState(editingCompany?.payCycleStartDay ?? 1);
 
   const [notes, setNotes] = useState(editingCompany?.notes || '');
@@ -1841,103 +1875,107 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
     });
   };
 
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const inputClass = isDark ? 'bg-black text-white border-white/30 focus:border-white placeholder:text-white/40' : 'bg-white text-black border-black/30 focus:border-black placeholder:text-black/40';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="border border-white bg-black max-w-md w-full p-6 space-y-5 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-white/10 pb-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-md w-full p-6 space-y-4 shadow-2xl`}>
+        <div className={`flex justify-between items-center border-b ${borderClass} pb-3`}>
+          <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
             <Building2 className="w-4 h-4" />
             {editingCompany ? 'Edit Employer / Client' : 'Add Employer / Client'}
           </h3>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+          <button onClick={onClose} className={`${subtextClass} hover:text-current`}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          
-          {/* Company Name */}
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Company / Workplace Name</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Company Name</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Acme Tech Lanka"
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white uppercase tracking-widest"
+              className={`w-full border px-3 py-2 uppercase tracking-widest ${inputClass}`}
               required
             />
           </div>
 
-          {/* Payment Model Selector */}
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1.5">Payment Model</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Payment Model</label>
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => setPaymentModel('hourly')}
-                className={`py-2 px-2 border text-[10px] uppercase font-bold tracking-wider transition ${paymentModel === 'hourly' ? 'border-[var(--neon-cyan)] text-[var(--neon-cyan)] box-glow-cyan bg-black' : 'border-white/10 text-neutral-400 hover:text-white'}`}
+                className={`py-1.5 px-2 border text-[10px] uppercase font-bold tracking-wider transition ${paymentModel === 'hourly' ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : borderClass}`}
               >
                 Hourly
               </button>
               <button
                 type="button"
                 onClick={() => setPaymentModel('monthly')}
-                className={`py-2 px-2 border text-[10px] uppercase font-bold tracking-wider transition ${paymentModel === 'monthly' ? 'border-[var(--neon-purple)] text-[var(--neon-purple)] box-glow-purple bg-black' : 'border-white/10 text-neutral-400 hover:text-white'}`}
+                className={`py-1.5 px-2 border text-[10px] uppercase font-bold tracking-wider transition ${paymentModel === 'monthly' ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : borderClass}`}
               >
                 Monthly
               </button>
               <button
                 type="button"
                 onClick={() => setPaymentModel('product')}
-                className={`py-2 px-2 border text-[10px] uppercase font-bold tracking-wider transition ${paymentModel === 'product' ? 'border-white text-white bg-neutral-900' : 'border-white/10 text-neutral-400 hover:text-white'}`}
+                className={`py-1.5 px-2 border text-[10px] uppercase font-bold tracking-wider transition ${paymentModel === 'product' ? (isDark ? 'bg-white text-black' : 'bg-black text-white') : borderClass}`}
               >
-                Per Product
+                Product
               </button>
             </div>
           </div>
 
-          {/* Context-Specific Rate Inputs */}
           {paymentModel === 'hourly' && (
-            <div className="space-y-3 border border-white/10 p-3 glass-panel animate-fade-in">
+            <div className={`space-y-3 border ${borderClass} p-3`}>
               <div>
-                <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Standard Hourly Rate (LKR / hr)</label>
+                <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Standard Hourly Rate (LKR / hr)</label>
                 <input
                   type="number"
                   step="any"
                   min="0"
                   value={defaultRate}
                   onChange={(e) => setDefaultRate(e.target.value)}
-                  className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                  className={`w-full border px-3 py-2 ${inputClass}`}
                   required
                 />
               </div>
 
-              <div className="border-t border-white/10 pt-2 space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-white flex items-center gap-1">
-                  <CalendarDays className="w-3.5 h-3.5" /> Weekend / Specific Day Rates (Optional)
+              <div className={`border-t ${borderClass} pt-2 space-y-2`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <CalendarDays className="w-3.5 h-3.5" /> Weekend Overrides (Optional)
                 </span>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[9px] uppercase text-neutral-400 mb-1">Saturday Rate (LKR)</label>
+                    <label className={`block text-[9px] uppercase ${subtextClass} mb-1`}>Saturday Rate (LKR)</label>
                     <input
                       type="number"
                       step="any"
                       placeholder={`Default (${defaultRate})`}
                       value={satRate}
                       onChange={(e) => setSatRate(e.target.value)}
-                      className="w-full bg-black border border-white/10 px-3 py-1.5 text-xs text-white focus:outline-none"
+                      className={`w-full border px-3 py-1.5 text-xs ${inputClass}`}
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] uppercase text-neutral-400 mb-1">Sunday Rate (LKR)</label>
+                    <label className={`block text-[9px] uppercase ${subtextClass} mb-1`}>Sunday Rate (LKR)</label>
                     <input
                       type="number"
                       step="any"
                       placeholder={`Default (${defaultRate})`}
                       value={sunRate}
                       onChange={(e) => setSunRate(e.target.value)}
-                      className="w-full bg-black border border-white/10 px-3 py-1.5 text-xs text-white focus:outline-none"
+                      className={`w-full border px-3 py-1.5 text-xs ${inputClass}`}
                     />
                   </div>
                 </div>
@@ -1946,21 +1984,21 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
           )}
 
           {paymentModel === 'monthly' && (
-            <div className="space-y-3 border border-white/10 p-3 glass-panel animate-fade-in">
+            <div className={`space-y-3 border ${borderClass} p-3`}>
               <div>
-                <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Fixed Monthly Salary (LKR / month)</label>
+                <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Fixed Monthly Salary (LKR / month)</label>
                 <input
                   type="number"
                   step="any"
                   min="0"
                   value={monthlySalary}
                   onChange={(e) => setMonthlySalary(e.target.value)}
-                  className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                  className={`w-full border px-3 py-2 ${inputClass}`}
                   required
                 />
               </div>
               <div>
-                <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Overtime Rate (LKR / hr - Optional)</label>
+                <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Overtime Rate (LKR / hr - Optional)</label>
                 <input
                   type="number"
                   step="any"
@@ -1968,16 +2006,16 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
                   placeholder="e.g. 350.00"
                   value={overtimeHourlyRate}
                   onChange={(e) => setOvertimeHourlyRate(e.target.value)}
-                  className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                  className={`w-full border px-3 py-2 ${inputClass}`}
                 />
               </div>
             </div>
           )}
 
           {paymentModel === 'product' && (
-            <div className="space-y-3 border border-white/10 p-3 glass-panel animate-fade-in">
+            <div className={`space-y-3 border ${borderClass} p-3`}>
               <div>
-                <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Standard Rate Per Product / Unit (LKR)</label>
+                <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Standard Rate Per Product (LKR)</label>
                 <input
                   type="number"
                   step="any"
@@ -1985,17 +2023,16 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
                   value={productRate}
                   onChange={(e) => setProductRate(e.target.value)}
                   placeholder="e.g. 250.00"
-                  className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+                  className={`w-full border px-3 py-2 ${inputClass}`}
                   required
                 />
               </div>
             </div>
           )}
 
-          {/* Custom Pay Cycle Date Configuration */}
-          <div className="border border-white/10 p-3 glass-panel space-y-2">
-            <label className="block text-[10px] uppercase font-bold text-white tracking-wider flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[var(--neon-cyan)]" /> Pay Cycle Start Day of Month
+          <div className={`border ${borderClass} p-3 space-y-1.5`}>
+            <label className="block text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5" /> Pay Cycle Start Day of Month
             </label>
             <div className="flex items-center gap-3">
               <input
@@ -2004,41 +2041,37 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
                 max="31"
                 value={payCycleStartDay}
                 onChange={(e) => setPayCycleStartDay(e.target.value)}
-                className="w-24 bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white font-bold"
+                className={`w-20 border px-3 py-1.5 font-bold ${inputClass}`}
                 required
               />
-              <span className="text-[10px] text-neutral-400 uppercase">
-                {payCycleStartDay == 1 ? 'Standard (1st to Month End)' : `Starts on day ${payCycleStartDay} to ${payCycleStartDay - 1}`}
+              <span className={`text-[10px] ${subtextClass} uppercase`}>
+                {payCycleStartDay == 1 ? 'Standard (1st to Month End)' : `Starts day ${payCycleStartDay} to ${payCycleStartDay - 1}`}
               </span>
             </div>
-            <p className="text-[9px] text-neutral-500 leading-relaxed">
-              If this company calculates salary from the 21st to the 20th, enter <strong>21</strong>. Enter <strong>1</strong> for standard calendar months.
-            </p>
           </div>
 
-          {/* Notes / Remarks */}
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Notes / Role Title</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Notes / Role Title</label>
             <input
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="e.g. Senior Developer / Freelance Consultant"
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className={`w-full border px-3 py-2 ${inputClass}`}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="border border-white/10 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
+              className={`border ${borderClass} ${outlineBtnClass} px-3.5 py-1.5 font-bold uppercase text-[10px] tracking-widest`}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="border border-white bg-white text-black hover:bg-neutral-200 px-5 py-2 font-bold uppercase text-[10px] tracking-widest transition"
+              className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 font-bold uppercase text-[10px] tracking-widest transition`}
             >
               Save Company
             </button>
@@ -2050,7 +2083,7 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany }) {
 }
 
 // Modal for Batch Multi-Day Shift Logging
-function BatchModal({ isOpen, onClose, companies, onSaveBatch }) {
+function BatchModal({ isOpen, onClose, companies, onSaveBatch, theme }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id || '');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
@@ -2075,25 +2108,33 @@ function BatchModal({ isOpen, onClose, companies, onSaveBatch }) {
     });
   };
 
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const inputClass = isDark ? 'bg-black text-white border-white/30 focus:border-white placeholder:text-white/40' : 'bg-white text-black border-black/30 focus:border-black placeholder:text-black/40';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="border border-white bg-black max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-white/10 pb-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-            <CalendarDays className="w-4 h-4 text-[var(--neon-cyan)]" /> Batch Log Shifts (Multi-Day)
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-md w-full p-5 space-y-3.5 shadow-2xl`}>
+        <div className={`flex justify-between items-center border-b ${borderClass} pb-2.5`}>
+          <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <CalendarDays className="w-4 h-4" /> Batch Log Shifts
           </h3>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+          <button onClick={onClose} className={`${subtextClass} hover:text-current`}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Company</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Company</label>
             <select
               value={companyId}
               onChange={(e) => setCompanyId(e.target.value)}
-              className="w-full bg-black border border-white/10 px-3 py-1.5 text-white uppercase tracking-wider"
+              className={`w-full border px-3 py-1.5 uppercase tracking-wider ${inputClass}`}
               required
             >
               {companies.map(c => (
@@ -2104,34 +2145,34 @@ function BatchModal({ isOpen, onClose, companies, onSaveBatch }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Start Date</label>
-              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-1.5 text-white" required />
+              <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Start Date</label>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`w-full border px-3 py-1.5 ${inputClass}`} required />
             </div>
             <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">End Date</label>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-1.5 text-white" required />
+              <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>End Date</label>
+              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`w-full border px-3 py-1.5 ${inputClass}`} required />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Start Time</label>
-              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-1.5 text-white" required />
+              <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Start Time</label>
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className={`w-full border px-3 py-1.5 ${inputClass}`} required />
             </div>
             <div>
-              <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">End Time</label>
-              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-1.5 text-white" required />
+              <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>End Time</label>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className={`w-full border px-3 py-1.5 ${inputClass}`} required />
             </div>
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 mb-1">Notes</label>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full bg-black border border-white/10 px-3 py-1.5 text-white" />
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} mb-1`}>Notes</label>
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} className={`w-full border px-3 py-1.5 ${inputClass}`} />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="border border-white/10 text-neutral-400 px-3 py-1.5 uppercase font-bold text-[10px]">Cancel</button>
-            <button type="submit" className="border border-white bg-white text-black px-4 py-1.5 uppercase font-bold text-[10px]">Log All Days</button>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={onClose} className={`border ${borderClass} ${outlineBtnClass} px-3 py-1.5 uppercase font-bold text-[10px]`}>Cancel</button>
+            <button type="submit" className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 uppercase font-bold text-[10px]`}>Log All Days</button>
           </div>
         </form>
       </div>
@@ -2140,16 +2181,23 @@ function BatchModal({ isOpen, onClose, companies, onSaveBatch }) {
 }
 
 // Modal for setting Monthly Target Goal
-function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal, title = 'Set Monthly Earnings Target', subtitle = 'Enter your income goal in LKR for tracking progress:' }) {
+function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal, title = 'Set Monthly Target Goal', subtitle = 'Enter your income goal in LKR for tracking progress:', theme }) {
   const [val, setVal] = useState(currentGoal);
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const inputClass = isDark ? 'bg-black text-white border-white/30 focus:border-white placeholder:text-white/40' : 'bg-white text-black border-black/30 focus:border-black placeholder:text-black/40';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="border border-white bg-black max-w-sm w-full p-5 space-y-4 shadow-2xl">
-        <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-          <Target className="w-4 h-4 text-[var(--neon-cyan)]" /> {title}
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-sm w-full p-5 space-y-3.5 shadow-2xl`}>
+        <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+          <Target className="w-4 h-4" /> {title}
         </h3>
-        <p className="text-[10px] text-neutral-400">
+        <p className={`text-[10px] ${subtextClass}`}>
           {subtitle}
         </p>
         <input
@@ -2158,11 +2206,11 @@ function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal, title = 'Set Mont
           step="5000"
           value={val}
           onChange={(e) => setVal(Number(e.target.value))}
-          className="w-full bg-black border border-white/20 p-2.5 text-white text-base font-extrabold focus:outline-none focus:border-[var(--neon-cyan)] glow-cyan"
+          className={`w-full border p-2.5 text-base font-black focus:outline-none ${inputClass}`}
         />
         <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} className="border border-white/10 text-neutral-400 px-3 py-1.5 uppercase font-bold text-[10px]">Cancel</button>
-          <button onClick={() => onSaveGoal(val)} className="border border-white bg-white text-black px-4 py-1.5 uppercase font-bold text-[10px]">Set Goal</button>
+          <button onClick={onClose} className={`border ${borderClass} ${outlineBtnClass} px-3 py-1.5 uppercase font-bold text-[10px]`}>Cancel</button>
+          <button onClick={() => onSaveGoal(val)} className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 uppercase font-bold text-[10px]`}>Set Goal</button>
         </div>
       </div>
     </div>
@@ -2170,13 +2218,12 @@ function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal, title = 'Set Mont
 }
 
 // Modal for EPF / ETF & Sri Lankan APIT Estimations
-function TaxEstimatorModal({ isOpen, onClose, totalGrossEarnings }) {
+function TaxEstimatorModal({ isOpen, onClose, totalGrossEarnings, theme }) {
   const epfEmployee = totalGrossEarnings * 0.08;
   const epfEmployer = totalGrossEarnings * 0.12;
   const etfEmployer = totalGrossEarnings * 0.03;
   const netAfterEpf = totalGrossEarnings - epfEmployee;
 
-  // Approximate Sri Lanka APIT monthly tax estimate (exempt up to 100k/mo, progressive brackets)
   let apitEstimate = 0;
   if (totalGrossEarnings > 100000) {
     const taxable = totalGrossEarnings - 100000;
@@ -2185,55 +2232,61 @@ function TaxEstimatorModal({ isOpen, onClose, totalGrossEarnings }) {
     else apitEstimate = 41666 * 0.06 + 41667 * 0.12 + (taxable - 83333) * 0.18;
   }
 
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="border border-white bg-black max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-white/10 pb-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-            <Calculator className="w-4 h-4 text-[var(--neon-purple)]" /> Sri Lanka EPF / ETF & APIT Estimator
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-md w-full p-5 space-y-3.5 shadow-2xl`}>
+        <div className={`flex justify-between items-center border-b ${borderClass} pb-2.5`}>
+          <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+            <Calculator className="w-4 h-4" /> Sri Lanka EPF / ETF & Tax Estimator
           </h3>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+          <button onClick={onClose} className={`${subtextClass} hover:text-current`}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="space-y-3 text-xs">
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-neutral-400 uppercase">Gross Period Earnings:</span>
-            <span className="font-bold text-white">{formatLKR(totalGrossEarnings)}</span>
+          <div className={`flex justify-between border-b ${borderClass} pb-2`}>
+            <span className={`${subtextClass} uppercase`}>Gross Period Earnings:</span>
+            <span className="font-bold">{formatLKR(totalGrossEarnings)}</span>
           </div>
 
-          <div className="border border-white/10 p-3 space-y-2 bg-neutral-950">
-            <p className="text-[10px] font-bold uppercase text-[var(--neon-cyan)] tracking-wider">Statutory Contributions (Estimates)</p>
+          <div className={`border ${borderClass} p-3 space-y-2`}>
+            <p className="text-[10px] font-bold uppercase tracking-wider">Statutory Deductions (Estimates)</p>
             <div className="flex justify-between text-[11px]">
-              <span className="text-neutral-400">Employee EPF (8%):</span>
-              <span className="font-mono text-red-400">-{formatLKR(epfEmployee)}</span>
+              <span className={subtextClass}>Employee EPF (8%):</span>
+              <span className="font-mono">-{formatLKR(epfEmployee)}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-neutral-400">Employer EPF (12%):</span>
-              <span className="font-mono text-neutral-300">+{formatLKR(epfEmployer)}</span>
+              <span className={subtextClass}>Employer EPF (12%):</span>
+              <span className="font-mono">+{formatLKR(epfEmployer)}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-neutral-400">Employer ETF (3%):</span>
-              <span className="font-mono text-neutral-300">+{formatLKR(etfEmployer)}</span>
+              <span className={subtextClass}>Employer ETF (3%):</span>
+              <span className="font-mono">+{formatLKR(etfEmployer)}</span>
             </div>
             <div className="flex justify-between text-[11px]">
-              <span className="text-neutral-400">Est. APIT Income Tax:</span>
-              <span className="font-mono text-amber-400">-{formatLKR(apitEstimate)}</span>
+              <span className={subtextClass}>Est. APIT Tax:</span>
+              <span className="font-mono">-{formatLKR(apitEstimate)}</span>
             </div>
           </div>
 
-          <div className="border border-white p-3 flex justify-between items-center bg-black">
+          <div className={`border ${borderClass} p-3 flex justify-between items-center ${cardClass}`}>
             <div>
-              <p className="text-[10px] text-neutral-400 uppercase">Estimated Take-Home (Net)</p>
-              <p className="text-[9px] text-neutral-500 uppercase">After 8% EPF & APIT withholding</p>
+              <p className={`text-[10px] ${subtextClass} uppercase`}>Estimated Take-Home (Net)</p>
+              <p className={`text-[9px] ${subtextClass} uppercase`}>After 8% EPF & APIT</p>
             </div>
-            <p className="text-base font-extrabold text-white glow-cyan">{formatLKR(netAfterEpf - apitEstimate)}</p>
+            <p className="text-base font-black">{formatLKR(netAfterEpf - apitEstimate)}</p>
           </div>
         </div>
 
-        <div className="flex justify-end pt-2">
-          <button onClick={onClose} className="border border-white bg-white text-black px-4 py-1.5 uppercase font-bold text-[10px]">
+        <div className="flex justify-end pt-1">
+          <button onClick={onClose} className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 uppercase font-bold text-[10px]`}>
             Close
           </button>
         </div>
@@ -2243,7 +2296,7 @@ function TaxEstimatorModal({ isOpen, onClose, totalGrossEarnings }) {
 }
 
 // Modal for adding salary promotion / raises over time
-function PromotionModal({ company, onClose, onAdd }) {
+function PromotionModal({ company, onClose, onAdd, theme }) {
   const [rate, setRate] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
@@ -2258,69 +2311,77 @@ function PromotionModal({ company, onClose, onAdd }) {
     });
   };
 
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const inputClass = isDark ? 'bg-black text-white border-white/30 focus:border-white placeholder:text-white/40' : 'bg-white text-black border-black/30 focus:border-black placeholder:text-black/40';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="border border-white bg-black max-w-md w-full p-6 space-y-4 shadow-2xl">
-        <div className="flex justify-between items-center border-b border-white/10 pb-3">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-md w-full p-5 space-y-3.5 shadow-2xl`}>
+        <div className={`flex justify-between items-center border-b ${borderClass} pb-2.5`}>
+          <h3 className="text-xs font-bold uppercase tracking-widest flex items-center gap-2">
             <Sparkles className="w-4 h-4" />
-            Add Promotion / Pay Revision ({company.name})
+            Add Pay Revision ({company.name})
           </h3>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+          <button onClick={onClose} className={`${subtextClass} hover:text-current`}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-3 text-xs">
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">New Rate (LKR)</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>New Rate (LKR)</label>
             <input
               type="number"
               step="any"
               value={rate}
               onChange={(e) => setRate(e.target.value)}
               placeholder="e.g. 1800.00"
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+              className={`w-full border px-3 py-2 ${inputClass}`}
               required
             />
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Effective Starting Date</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Effective Date</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white tracking-widest"
+              className={`w-full border px-3 py-2 tracking-widest ${inputClass}`}
               required
             />
-            <p className="text-[9px] text-neutral-500 mt-1 uppercase">Shifts logged on or after this date automatically apply this revised rate.</p>
+            <p className={`text-[9px] ${subtextClass} mt-1 uppercase`}>Shifts logged on or after this date automatically apply this revised rate.</p>
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold text-neutral-400 tracking-wider mb-1">Reason / Note</label>
+            <label className={`block text-[10px] uppercase font-bold ${subtextClass} tracking-wider mb-1`}>Reason / Note</label>
             <input
               type="text"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="e.g. Mid-year raise / Promotion to Lead"
-              className="w-full bg-black border border-white/10 px-3 py-2 text-white focus:outline-none focus:border-white"
+              placeholder="e.g. Mid-year raise / Promotion"
+              className={`w-full border px-3 py-2 ${inputClass}`}
             />
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="border border-white/10 text-neutral-400 hover:text-white px-4 py-2 font-bold uppercase text-[10px] tracking-widest"
+              className={`border ${borderClass} ${outlineBtnClass} px-3.5 py-1.5 font-bold uppercase text-[10px] tracking-widest`}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="border border-white bg-white text-black hover:bg-neutral-200 px-5 py-2 font-bold uppercase text-[10px] tracking-widest transition"
+              className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 font-bold uppercase text-[10px] tracking-widest transition`}
             >
-              Add Effective Rate
+              Save Rate
             </button>
           </div>
         </form>
