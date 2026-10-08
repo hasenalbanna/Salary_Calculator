@@ -123,9 +123,9 @@ export const getCompanyDateRange = (company, monthStr) => {
     const actualStartDay = Math.min(startDay, daysInPrev);
     const startDate = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(actualStartDay).padStart(2, '0')}`;
 
-    const endDayNum = startDay - 1;
+    // End date is the exact same date in the next month (e.g. 26th to next month 26th)
     const daysInCur = new Date(year, month, 0).getDate();
-    const actualEndDay = Math.min(endDayNum, daysInCur);
+    const actualEndDay = Math.min(startDay, daysInCur);
     const endDate = `${yearStr}-${String(month).padStart(2, '0')}-${String(actualEndDay).padStart(2, '0')}`;
 
     const startMonthName = prevMonthDate.toLocaleString('default', { month: 'short' });
@@ -193,6 +193,7 @@ export default function App() {
   // Goal & Modals
   const [goalModalOpen, setGoalModalOpen] = useState(false);
   const [companyGoalModalOpen, setCompanyGoalModalOpen] = useState(false);
+  const [companyGoalDetailOpen, setCompanyGoalDetailOpen] = useState(false);
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
 
@@ -1180,23 +1181,37 @@ export default function App() {
             </button>
           </div>
 
-          {/* Minimalist Company Target Goal Bar */}
-          <div className={`border ${borderClass} p-3 space-y-1.5 ${cardClass}`}>
+          {/* Minimalist Company Target Goal Bar & Breakdown Trigger */}
+          <div 
+            onClick={() => selectedComp?.monthlyGoal ? setCompanyGoalDetailOpen(true) : setCompanyGoalModalOpen(true)}
+            className={`border ${borderClass} p-3.5 space-y-2 ${cardClass} cursor-pointer hover:border-current transition group select-none`}
+            title="Click to view daily required earnings and cycle breakdown"
+          >
             <div className="flex justify-between items-center text-[10px] uppercase tracking-wider">
-              <span className={`flex items-center gap-1.5 ${subtextClass}`}>
-                <Target className="w-3 h-3" />
+              <span className={`flex items-center gap-1.5 ${subtextClass} group-hover:text-current transition`}>
+                <Target className="w-3.5 h-3.5" />
                 {selectedComp?.monthlyGoal ? (
-                  <span>Target: <strong className={isDark ? 'text-white' : 'text-black'}>{formatLKR(selectedComp.monthlyGoal)}</strong> ({compGoalProgress}%)</span>
+                  <span>
+                    Target: <strong className={isDark ? 'text-white' : 'text-black'}>{formatLKR(selectedComp.monthlyGoal)}</strong> ({compGoalProgress}%)
+                  </span>
                 ) : (
                   <span>No monthly target goal set</span>
                 )}
               </span>
-              <button
-                onClick={() => setCompanyGoalModalOpen(true)}
-                className="text-[9px] uppercase font-bold underline"
-              >
-                {selectedComp?.monthlyGoal ? 'Edit Goal' : '+ Set Goal'}
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] uppercase font-bold underline group-hover:opacity-100 opacity-90">
+                  {selectedComp?.monthlyGoal ? 'View Daily Pace →' : '+ Set Goal'}
+                </span>
+                {selectedComp?.monthlyGoal > 0 && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCompanyGoalModalOpen(true); }}
+                    className={`text-[9px] uppercase px-1.5 py-0.5 border ${borderClass} hover:border-current font-bold`}
+                    title="Change Target Amount"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             </div>
             {selectedComp?.monthlyGoal > 0 && (
               <div className={`w-full h-1.5 border ${borderClass} overflow-hidden ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
@@ -1352,6 +1367,22 @@ export default function App() {
           onSaveGoal={(val) => {
             handleSaveCompanyGoal(selectedComp?.id, val);
             setCompanyGoalModalOpen(false);
+          }}
+          theme={theme}
+        />
+      )}
+
+      {/* Company Target Goal Breakdown Popup */}
+      {companyGoalDetailOpen && (
+        <CompanyGoalDetailModal
+          isOpen={companyGoalDetailOpen}
+          onClose={() => setCompanyGoalDetailOpen(false)}
+          company={selectedComp}
+          monthStr={selectedMonth}
+          earnedSoFar={compEarn}
+          onEditGoal={() => {
+            setCompanyGoalDetailOpen(false);
+            setCompanyGoalModalOpen(true);
           }}
           theme={theme}
         />
@@ -2045,7 +2076,7 @@ function CompanyModal({ isOpen, onClose, onSave, editingCompany, theme }) {
                 required
               />
               <span className={`text-[10px] ${subtextClass} uppercase`}>
-                {payCycleStartDay == 1 ? 'Standard (1st to Month End)' : `Starts day ${payCycleStartDay} to ${payCycleStartDay - 1}`}
+                {payCycleStartDay == 1 ? 'Standard (1st to Month End)' : `Starts day ${payCycleStartDay} to next month day ${payCycleStartDay}`}
               </span>
             </div>
           </div>
@@ -2212,6 +2243,166 @@ function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal, title = 'Set Mont
           <button onClick={onClose} className={`border ${borderClass} ${outlineBtnClass} px-3 py-1.5 uppercase font-bold text-[10px]`}>Cancel</button>
           <button onClick={() => onSaveGoal(val)} className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 uppercase font-bold text-[10px]`}>Set Goal</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal popup showing detailed target earnings breakdown, amount earned so far, days remaining, and required daily pace
+function CompanyGoalDetailModal({ isOpen, onClose, company, monthStr, earnedSoFar, onEditGoal, theme }) {
+  if (!isOpen || !company) return null;
+
+  const isDark = theme === 'dark';
+  const borderClass = isDark ? 'border-white/30' : 'border-black/30';
+  const subtextClass = isDark ? 'text-white/70' : 'text-black/70';
+  const primaryBtnClass = isDark ? 'bg-white text-black hover:bg-white/90 active:scale-[0.99]' : 'bg-black text-white hover:bg-black/90 active:scale-[0.99]';
+  const outlineBtnClass = isDark ? 'border border-white/40 text-white hover:bg-white hover:text-black' : 'border border-black/40 text-black hover:bg-black hover:text-white';
+  const cardClass = isDark ? 'bg-black text-white border border-white/30' : 'bg-white text-black border border-black/30';
+
+  const goal = Number(company?.monthlyGoal || 0);
+  const dateRange = getCompanyDateRange(company, monthStr);
+
+  // Compute dates, cycle timeline, and days remaining
+  const now = new Date();
+  let totalDays = 30;
+  let remainingDays = 0;
+  let daysElapsed = 0;
+  let isPastCycle = false;
+
+  if (dateRange.startDate && dateRange.endDate) {
+    const start = new Date(dateRange.startDate + 'T00:00:00');
+    const end = new Date(dateRange.endDate + 'T23:59:59');
+    totalDays = Math.max(1, Math.round((end - start) / (1000 * 60 * 60 * 24)));
+
+    if (now < start) {
+      remainingDays = totalDays;
+      daysElapsed = 0;
+    } else if (now > end) {
+      remainingDays = 0;
+      daysElapsed = totalDays;
+      isPastCycle = true;
+    } else {
+      remainingDays = Math.max(1, Math.ceil((end - now) / (1000 * 60 * 60 * 24)));
+      daysElapsed = Math.max(1, totalDays - remainingDays);
+    }
+  }
+
+  const remainingMoney = Math.max(0, goal - earnedSoFar);
+  const progressPercent = goal > 0 ? Math.min(100, Math.round((earnedSoFar / goal) * 100)) : 0;
+  
+  // Required daily earnings to achieve the target
+  const dailyNeeded = remainingDays > 0 ? Math.ceil(remainingMoney / remainingDays) : 0;
+  
+  // Current daily earning pace
+  const currentDailyAvg = daysElapsed > 0 ? Math.round(earnedSoFar / daysElapsed) : 0;
+
+  return (
+    <div className={`fixed inset-0 z-50 ${isDark ? 'bg-black/90' : 'bg-black/40'} backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fade-in`}>
+      <div className={`border ${borderClass} ${cardClass} max-w-md w-full p-5 sm:p-6 space-y-4 shadow-2xl`}>
+        
+        {/* Header */}
+        <div className={`flex justify-between items-start border-b ${borderClass} pb-3`}>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <Target className="w-4 h-4" />
+              <h3 className="text-xs font-bold uppercase tracking-widest">{company.name} Target Goal</h3>
+            </div>
+            <p className={`text-[10px] ${subtextClass} uppercase tracking-wider`}>
+              Cycle: {dateRange.label}
+            </p>
+          </div>
+          <button onClick={onClose} className={`${subtextClass} hover:text-current p-1`}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Hero Banner: Required Daily Earnings */}
+        <div className={`border ${borderClass} p-4 text-center space-y-1.5 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+          <p className={`text-[10px] uppercase font-bold tracking-widest ${subtextClass}`}>
+            {remainingMoney <= 0 ? 'Goal Status' : 'Required Daily Earnings'}
+          </p>
+
+          {remainingMoney <= 0 ? (
+            <div className="space-y-1 py-1">
+              <div className="text-2xl font-black tracking-tight">🎉 GOAL ACHIEVED!</div>
+              <p className={`text-[11px] ${subtextClass}`}>
+                You have earned {formatLKR(earnedSoFar)} out of your {formatLKR(goal)} target ({progressPercent}% achieved).
+              </p>
+            </div>
+          ) : isPastCycle ? (
+            <div className="space-y-1 py-1">
+              <div className="text-2xl font-black tracking-tight">Cycle Concluded</div>
+              <p className={`text-[11px] ${subtextClass}`}>
+                Earned {formatLKR(earnedSoFar)} of {formatLKR(goal)} ({progressPercent}%). Short by {formatLKR(remainingMoney)}.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="text-3xl sm:text-4xl font-black tracking-tight">
+                {formatLKR(dailyNeeded)}
+                <span className={`text-sm font-normal uppercase tracking-widest ${subtextClass}`}> / day</span>
+              </div>
+              <p className={`text-[11px] ${subtextClass}`}>
+                Earn {formatLKR(dailyNeeded)} per day for the next <strong>{remainingDays} days</strong> to reach your {formatLKR(goal)} target!
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Progress Bar */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-[10px] uppercase tracking-wider">
+            <span className={subtextClass}>Progress ({progressPercent}%)</span>
+            <span className="font-bold">{formatLKR(earnedSoFar)} / {formatLKR(goal)}</span>
+          </div>
+          <div className={`w-full h-2 border ${borderClass} overflow-hidden ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
+            <div 
+              className={`h-full ${isDark ? 'bg-white' : 'bg-black'} transition-all duration-300`} 
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Detailed Breakdown Grid */}
+        <div className={`border ${borderClass} divide-y ${isDark ? 'divide-white/20' : 'divide-black/20'} text-xs`}>
+          <div className="flex justify-between items-center p-2.5">
+            <span className={`${subtextClass} uppercase text-[10px] tracking-wider`}>Earned So Far:</span>
+            <span className="font-bold font-mono">{formatLKR(earnedSoFar)}</span>
+          </div>
+          <div className="flex justify-between items-center p-2.5">
+            <span className={`${subtextClass} uppercase text-[10px] tracking-wider`}>Remaining to Target:</span>
+            <span className="font-bold font-mono">{formatLKR(remainingMoney)}</span>
+          </div>
+          <div className="flex justify-between items-center p-2.5">
+            <span className={`${subtextClass} uppercase text-[10px] tracking-wider`}>Billing Cycle Range:</span>
+            <span className="font-bold text-[11px]">{dateRange.startDate || '--'} to {dateRange.endDate || '--'}</span>
+          </div>
+          <div className="flex justify-between items-center p-2.5">
+            <span className={`${subtextClass} uppercase text-[10px] tracking-wider`}>Days Remaining:</span>
+            <span className="font-bold font-mono">{remainingDays} of {totalDays} days</span>
+          </div>
+          <div className="flex justify-between items-center p-2.5">
+            <span className={`${subtextClass} uppercase text-[10px] tracking-wider`}>Current Daily Pace:</span>
+            <span className="font-bold font-mono">{formatLKR(currentDailyAvg)} / day</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-between items-center pt-2">
+          <button
+            onClick={() => { onClose(); onEditGoal(); }}
+            className={`border ${borderClass} ${outlineBtnClass} px-3 py-1.5 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5`}
+          >
+            <Edit3 className="w-3.5 h-3.5" /> Edit Goal
+          </button>
+          <button
+            onClick={onClose}
+            className={`border ${borderClass} ${primaryBtnClass} px-4 py-1.5 text-xs font-bold uppercase tracking-wider`}
+          >
+            Close
+          </button>
+        </div>
+
       </div>
     </div>
   );
