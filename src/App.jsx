@@ -186,6 +186,7 @@ export default function App() {
 
   // Goal & Tax Modals
   const [goalModalOpen, setGoalModalOpen] = useState(false);
+  const [companyGoalModalOpen, setCompanyGoalModalOpen] = useState(false);
   const [taxModalOpen, setTaxModalOpen] = useState(false);
   const [batchModalOpen, setBatchModalOpen] = useState(false);
   const [calendarViewOpen, setCalendarViewOpen] = useState(false);
@@ -530,6 +531,17 @@ export default function App() {
     showToast('Promotion rate added');
   };
 
+  const handleSaveCompanyGoal = (companyId, newGoal) => {
+    const updatedCompanies = companies.map(c => {
+      if (c.id === companyId) {
+        return { ...c, monthlyGoal: Number(newGoal || 0) };
+      }
+      return c;
+    });
+    saveToFirebase('companies', updatedCompanies.reduce((acc, curr) => ({ ...acc, [curr.id]: curr }), {}));
+    showToast('Company target goal updated');
+  };
+
   // Feature: CSV Spreadsheet Export
   const handleExportCSV = () => {
     const headers = ['Date', 'Company', 'Payment Model', 'Start Time', 'End Time', 'Hours / Units', 'Hourly / Unit Rate', 'Bonus (LKR)', 'Earnings (LKR)', 'Notes'];
@@ -784,6 +796,12 @@ export default function App() {
   const compBreakdown = selectedCompanyId ? stats.companyBreakdown[selectedCompanyId] : null;
   const compEarn = compBreakdown?.earnings || 0;
 
+  // Feature: Company-specific Target Goal Progress
+  const compGoalProgress = useMemo(() => {
+    if (!selectedComp?.monthlyGoal || selectedComp?.monthlyGoal <= 0) return 0;
+    return Math.min(100, Math.round((compEarn / selectedComp.monthlyGoal) * 100));
+  }, [compEarn, selectedComp]);
+
   return (
     <div className="min-h-screen bg-[#050505] text-white font-mono select-none relative pb-16">
       
@@ -1036,45 +1054,80 @@ export default function App() {
         </div>
       ) : (
         /* Company Details View (Drill Down) */
-        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-6 animate-slide-up">
+        <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-5 animate-slide-up">
           
-          {/* Back & Title Header */}
-          <div className="flex items-center gap-3 border-b border-white/20 pb-4">
-            <button onClick={() => setActiveTab('home')} className="btn-cyan p-2" title="Return to Overview">
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-extrabold tracking-widest uppercase glow-cyan truncate">{selectedComp?.name}</h2>
-              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-neutral-400">
-                <span className="border border-white/20 px-1.5 py-0.2 uppercase text-[9px] text-[var(--neon-cyan)]">
-                  {selectedComp?.paymentModel === 'monthly' ? 'Fixed Monthly' : selectedComp?.paymentModel === 'product' ? 'Per Product' : 'Hourly'}
+          {/* Header Row: Back, Title, Actions */}
+          <div className="flex items-center justify-between border-b border-white/20 pb-3 gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button onClick={() => setActiveTab('home')} className="btn-cyan p-1.5" title="Return to Overview">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold tracking-widest uppercase glow-cyan truncate">{selectedComp?.name}</h2>
+                <span className="text-[9px] border border-white/20 px-1 py-0.2 uppercase text-neutral-400">
+                  {selectedComp?.paymentModel === 'monthly' ? 'Fixed Monthly' : selectedComp?.paymentModel === 'product' ? 'Per Product' : 'Hourly Rate'}
                 </span>
-                <span>• Cycle: {getCompanyDateRange(selectedComp, selectedMonth).label}</span>
               </div>
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button 
                 onClick={() => handleGeneratePayslip(selectedComp?.id)} 
-                className="btn-cyan px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"
+                className="btn-cyan px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
                 title="Download Company PDF Payslip"
               >
                 <FileText className="w-3.5 h-3.5" /> PDF
               </button>
               <button 
                 onClick={() => { setEditingCompany(selectedComp); setCompanyModalOpen(true); }} 
-                className="btn-purple px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"
-                title="Edit Company Rates & Cycle"
+                className="border border-white/20 text-neutral-300 hover:text-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                title="Edit Rates & Pay Cycle"
               >
-                <Settings className="w-3.5 h-3.5" /> Settings
+                <Settings className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          {/* Company Totals & Log Shift CTA */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="border border-[var(--neon-purple)] bg-black p-5 text-center box-glow-purple flex flex-col justify-center">
-              <p className="text-[10px] text-[var(--neon-purple)] uppercase tracking-widest mb-1">Total Period Earnings</p>
+          {/* Minimalist Month Filter & Pay Cycle Bar inside Company View */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-black/60 border border-white/10 p-2.5 text-xs">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => stepMonth(-1)}
+                className="p-1 border border-white/20 hover:border-white text-neutral-300 hover:text-white"
+                title="Previous Month"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="bg-black border border-white/20 text-white text-[11px] px-2 py-1 focus:outline-none focus:border-[var(--neon-cyan)] uppercase tracking-wider"
+                >
+                  {monthOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={() => stepMonth(1)}
+                className="p-1 border border-white/20 hover:border-white text-neutral-300 hover:text-white"
+                title="Next Month"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="text-[10px] text-neutral-400 tracking-wider">
+              <span className="text-[var(--neon-cyan)]">Cycle:</span> {getCompanyDateRange(selectedComp, selectedMonth).label}
+            </div>
+          </div>
+
+          {/* Earnings & CTA Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="border border-[var(--neon-purple)] bg-black p-4 text-center box-glow-purple flex flex-col justify-center">
+              <p className="text-[10px] text-[var(--neon-purple)] uppercase tracking-widest mb-0.5">Period Earnings</p>
               <p className="text-2xl font-extrabold glow-purple">{formatLKR(compEarn)}</p>
               {selectedComp?.paymentModel === 'monthly' && selectedMonth !== 'all' && (
                 <p className="text-[9px] text-neutral-400 mt-1 uppercase">
@@ -1085,11 +1138,39 @@ export default function App() {
             
             <button 
               onClick={() => { setEditingShift(null); setShiftModalOpen(true); }} 
-              className="btn-cyan font-extrabold text-sm uppercase tracking-widest flex flex-col items-center justify-center p-5 transition hover:box-glow-cyan"
+              className="btn-cyan font-bold text-xs uppercase tracking-widest flex flex-col items-center justify-center p-4 transition hover:box-glow-cyan"
             >
-              <Plus className="w-6 h-6 mb-1" />
+              <Plus className="w-5 h-5 mb-1" />
               <span>{selectedComp?.paymentModel === 'product' ? 'Log Product Work' : selectedComp?.paymentModel === 'monthly' ? 'Log OT / Entry' : 'Log Shift'}</span>
             </button>
+          </div>
+
+          {/* Minimalist Company Target Goal Bar */}
+          <div className="border border-white/10 bg-black/60 p-3 space-y-1.5">
+            <div className="flex justify-between items-center text-[10px] text-neutral-400 uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <Target className="w-3 h-3 text-[var(--neon-cyan)]" />
+                {selectedComp?.monthlyGoal ? (
+                  <span>Target: <strong className="text-white">{formatLKR(selectedComp.monthlyGoal)}</strong> ({compGoalProgress}%)</span>
+                ) : (
+                  <span className="text-neutral-500">No monthly target set</span>
+                )}
+              </span>
+              <button
+                onClick={() => setCompanyGoalModalOpen(true)}
+                className="text-[9px] uppercase font-bold text-[var(--neon-cyan)] hover:underline"
+              >
+                {selectedComp?.monthlyGoal ? 'Edit Goal' : '+ Set Goal'}
+              </button>
+            </div>
+            {selectedComp?.monthlyGoal > 0 && (
+              <div className="w-full bg-neutral-900 h-1.5 border border-white/10 overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-[var(--neon-cyan)] to-[var(--neon-purple)] transition-all duration-500" 
+                  style={{ width: `${compGoalProgress}%` }}
+                />
+              </div>
+            )}
           </div>
 
           {/* Shifts / Work History List */}
@@ -1217,6 +1298,21 @@ export default function App() {
             setMonthlyGoal(val);
             setGoalModalOpen(false);
             showToast('Monthly target goal updated');
+          }}
+        />
+      )}
+
+      {/* Company Monthly Goal Modal */}
+      {companyGoalModalOpen && (
+        <GoalModal
+          isOpen={companyGoalModalOpen}
+          onClose={() => setCompanyGoalModalOpen(false)}
+          title={`Target Goal: ${selectedComp?.name}`}
+          subtitle={`Set monthly target earnings for ${selectedComp?.name}:`}
+          currentGoal={selectedComp?.monthlyGoal || 50000}
+          onSaveGoal={(val) => {
+            handleSaveCompanyGoal(selectedComp?.id, val);
+            setCompanyGoalModalOpen(false);
           }}
         />
       )}
@@ -2044,17 +2140,17 @@ function BatchModal({ isOpen, onClose, companies, onSaveBatch }) {
 }
 
 // Modal for setting Monthly Target Goal
-function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal }) {
+function GoalModal({ isOpen, onClose, currentGoal, onSaveGoal, title = 'Set Monthly Earnings Target', subtitle = 'Enter your income goal in LKR for tracking progress:' }) {
   const [val, setVal] = useState(currentGoal);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="border border-white bg-black max-w-sm w-full p-5 space-y-4 shadow-2xl">
         <h3 className="text-xs font-bold uppercase tracking-widest text-white flex items-center gap-2">
-          <Target className="w-4 h-4 text-[var(--neon-cyan)]" /> Set Monthly Earnings Target
+          <Target className="w-4 h-4 text-[var(--neon-cyan)]" /> {title}
         </h3>
         <p className="text-[10px] text-neutral-400">
-          Enter your income goal in LKR for tracking your earnings progress across all workplaces:
+          {subtitle}
         </p>
         <input
           type="number"
